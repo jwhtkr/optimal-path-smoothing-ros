@@ -22,9 +22,8 @@ class SolverBase(object):
         """
         Perform any necessary setup for the optimization solver.
 
-        Must be overidden by child classes, and the function signature is
-        flexible for any method of passing parameters to the child class
-        implementation.
+        Must be overidden by child classes. The function signature is flexible
+        for any method of passing parameters to the child class implementation.
 
         Parameters
         ----------
@@ -40,5 +39,31 @@ class SolverBase(object):
         any or None
             Returns what is returned by the internal optimization solver setup
             method if it has one. Otherwise returns None.
+        """
+        raise NotImplementedError
+
+    def solve(self, *args, **kwargs):
+        """
+        Solve the optimal control optimization problem.
+
+        Must be overidden by child classes. The function signature is flexible
+        for any method of passing parameters to the child class implementation
+        or internal solver class.
+
+        Parameters
+        ----------
+        *args
+            Positional arguments for use by the child class for solving. Some
+            may be passed to the solve function of the internal optimization
+            solver.
+        **kwargs
+            Keyword arguments for use by the child class for solving. Some may
+            be passed to the solve function of the internal optimization solver.
+
+        Returns
+        -------
+        numpy.ndarray or None
+            Returns the solution to the optimal control optimization problem, or
+            None if no solution was found (infeasible).
         """
         raise NotImplementedError

@@ -25,10 +25,9 @@ class OptimalControlBase(object):
     solver : Solver
         A subclass of the Solver class that wraps an optimization solver for use
         in optimal control.
-    kwargs : dict
+    kwargs : dict of {str: any}
         A dictionary of key-word arguments to be passed to the underlying solver
         at solve time.
-
 
     Parameters
     ----------
@@ -44,6 +43,9 @@ class OptimalControlBase(object):
     solver : Solver
         A subclass of the Solver class that wraps an optimization solver for use
         in optimal control.
+    **kwargs
+        The keyword arguments to be passed to the underlying solver at solve
+        time.
 
     """
     def __init__(self, dynamics, constraints, cost, solver, **kwargs):
@@ -63,7 +65,7 @@ class OptimalControlBase(object):
         the current attributes. This method should be called after changing any
         of the attributes to ensure a solution is valid for the current state.
         """
-        pass
+        raise NotImplementedError
 
     def solve(self, warm_start=None):
         """
@@ -83,4 +85,4 @@ class OptimalControlBase(object):
         numpy.ndarray
             The solution to the optimal control problem.
         """
-        pass
+        raise NotImplementedError
