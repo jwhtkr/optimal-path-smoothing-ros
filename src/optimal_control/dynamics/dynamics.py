@@ -1,6 +1,7 @@
 """Contains the base object for a dynamic system."""
 
-class Dynamics(object):
+
+class Dynamics(object):  # pylint: disable=too-few-public-methods
     """
     Represent a dynamical system.
 
@@ -20,11 +21,20 @@ class Dynamics(object):
 
     Parameters
     ----------
+    n_state : int
+        The number of states of the system.
+    n_ctrl : int
+        The number of control inputs of the system.
+    n_output : int
+        The number of outputs of the system.
     parameters : dict
         A dictionary of system parameters.
 
     """
-    def __init__(self, parameters):
+    def __init__(self, n_state, n_ctrl, n_output, parameters):
+        self.n_state = n_state
+        self.n_ctrl = n_ctrl
+        self.n_output = n_output
         self.parameters = parameters
 
 
@@ -90,8 +100,8 @@ class ContinuousDynamics(Dynamics):
         Returns
         -------
         numpy.ndarray
-            The output at time t, for the state state and control input u as a
-            vector of shape (n_output,1).
+            The output at time t, for the state state and control input ctrl as
+            a vector of shape (n_output,1).
 
         """
         raise NotImplementedError
@@ -162,7 +172,7 @@ class ContinuousDynamics(Dynamics):
         raise NotImplementedError
 
 
-class DiscreteDynamics(Dynamics):
+class DiscreteDynamics(Dynamics):  # pylint: disable=too-few-public-methods
     """
     Represent a discrete or discretized system's dynamics.
 
@@ -176,10 +186,35 @@ class DiscreteDynamics(Dynamics):
         The time step of the discretization. Corresponds to:
         t_next = t_curr + time_step.
 
-    Parameters
-    ----------
-
     """
+    def output(self, k, curr_state, curr_ctrl):
+        """
+        Calculate the output of the system at a point as an numpy array.
+
+        Calculate the output of the system for a given time index, state, and
+        control input. This relates to the canonical representation of the
+        output: output = g(k, state, ctrl). Must be overidden by child classes.
+
+        Parameters
+        ----------
+        k : int
+            The time index at which to calculate the dynamics.
+        curr_state : np.array
+            The state at time `k` for which the dynamics are to be calculated.
+            Represented as a vector of shape (`n_state`,1).
+        curr_ctrl : np.array
+            The control input at time `k` for which the dynamics are to be
+            calculated. Represented as a vector of shape (`n_ctrl`,1).
+
+        Returns
+        -------
+        numpy.ndarray
+            The output at time `k`, for the state state and control input ctrl
+            as a vector of shape (`n_output`,1).
+
+        """
+        raise NotImplementedError
+
     def next_state(self, k, curr_state, curr_ctrl):
         """
         Calculate the next state from the discretized dynamics.
