@@ -37,8 +37,8 @@ class DirectOptimalControl(opt_ctrl_base.OptimalControlBase):
         :attribute:`constraints`, and includes the dynamic constraints
     direct_cost : Cost
         An instance or subclass of the Cost class that represents the cost
-        function of the direct optimal control problem. Transformed from
-        :attribute:`cost`.
+        function of the direct optimal control problem. Transformed and
+        discretized from :attribute:`cost`.
 
     Parameters
     ----------
@@ -64,6 +64,9 @@ class DirectOptimalControl(opt_ctrl_base.OptimalControlBase):
         self.direct_constraints = None
         super(DirectOptimalControl, self).__init__(dynamics, constraints, cost,
                                                    solver, **kwargs)
+        self.update()
+        self.solver.setup(objective=self.direct_cost,
+                          constraints=self.direct_constraints)
 
     def update(self):
         """
@@ -79,6 +82,7 @@ class DirectOptimalControl(opt_ctrl_base.OptimalControlBase):
 
     def solve(self, warm_start=None):
         """See base class."""
-        return self.solver.solve(cost=self.direct_cost,
-                                 constraints=self.direct_constraints,
-                                 warm_start=warm_start)
+        return self.solver.solve(warm_start=warm_start, **self.kwargs)
+
+
+# TODO: Make simultaneous and Sequential children of this

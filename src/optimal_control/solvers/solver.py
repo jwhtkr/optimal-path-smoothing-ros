@@ -2,7 +2,7 @@
 
 
 
-class SolverBase(object):
+class Solver(object):
     """
     Represent an optimization solver in an abstract way.
 
@@ -18,7 +18,7 @@ class SolverBase(object):
     def __init__(self):
         self.solver = None
 
-    def setup(self, *args, **kwargs):
+    def setup(self, objective, constraints, **kwargs):
         """
         Perform any necessary setup for the optimization solver.
 
@@ -27,9 +27,12 @@ class SolverBase(object):
 
         Parameters
         ----------
-        *args
-            Positional arguments for use by the child class for setup. Some may
-            be passed to a setup function of the internal optimization solver.
+        objective : optimal_control.objectives.objective.Objective
+            An objective to be optimized. Converted in this method to a form
+            compatible with the internal solver.
+        constraints : optimal_control.constraints.constraints.Constraints
+            A set of constraints that must be satisfied. Converted in this
+            method to a form compatible with the internal solver.
         **kwargs
             Keyword arguments for use by the child class for setup. Some may be
             passed to a setup function of the internal optimization solver.
@@ -42,7 +45,7 @@ class SolverBase(object):
         """
         raise NotImplementedError
 
-    def solve(self, *args, **kwargs):
+    def solve(self, **kwargs):
         """
         Solve the optimal control optimization problem.
 
@@ -52,10 +55,6 @@ class SolverBase(object):
 
         Parameters
         ----------
-        *args
-            Positional arguments for use by the child class for solving. Some
-            may be passed to the solve function of the internal optimization
-            solver.
         **kwargs
             Keyword arguments for use by the child class for solving. Some may
             be passed to the solve function of the internal optimization solver.
