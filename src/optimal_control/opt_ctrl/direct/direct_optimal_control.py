@@ -55,8 +55,7 @@ class DirectOptimalControl(opt_ctrl_base.OptimalControlBase):
         A subclass of the Solver class that wraps an optimization solver for use
         in optimal control.
     **kwargs
-        The keyword arguments to be passed to the underlying solver at solve
-        time.
+        Keyword arguments to be passed to the `setup` function of the solver.
 
     """
     def __init__(self, dynamics, constraints, cost, solver, **kwargs):
@@ -64,11 +63,8 @@ class DirectOptimalControl(opt_ctrl_base.OptimalControlBase):
         self.direct_constraints = None
         super(DirectOptimalControl, self).__init__(dynamics, constraints, cost,
                                                    solver, **kwargs)
-        self.update()
-        self.solver.setup(objective=self.direct_cost,
-                          constraints=self.direct_constraints)
 
-    def update(self):
+    def update(self, **kwargs):
         """
         Update the problem representation with the current attributes.
 
@@ -77,12 +73,19 @@ class DirectOptimalControl(opt_ctrl_base.OptimalControlBase):
         new dynamics/cost/etc.). Results in storing :attribute:`direct_cost` and
         :attribute:`direct_constraints`.
 
+        Parameters
+        ----------
+        **kwargs
+            Keyword arguments to be passed to the `setup` function of the
+            solver.
+
         """
-        raise NotImplementedError
+        self.solver.setup(objective=self.direct_cost,
+                          constraints=self.direct_constraints, **kwargs)
 
-    def solve(self, warm_start=None):
+    def solve(self, warm_start=None, **kwargs):
         """See base class."""
-        return self.solver.solve(warm_start=warm_start, **self.kwargs)
+        return self.solver.solve(warm_start=warm_start, **kwargs)
 
 
-# TODO: Make simultaneous and Sequential children of this
+# TODO: Make simultaneous and Sequential children of this, maybe?

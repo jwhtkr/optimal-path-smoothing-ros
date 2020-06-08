@@ -25,9 +25,6 @@ class OptimalControlBase(object):
     solver : Solver
         A subclass of the Solver class that wraps an optimization solver for use
         in optimal control.
-    kwargs : dict of {str: any}
-        A dictionary of key-word arguments to be passed to the underlying solver
-        at solve time.
 
     Parameters
     ----------
@@ -44,8 +41,7 @@ class OptimalControlBase(object):
         A subclass of the Solver class that wraps an optimization solver for use
         in optimal control.
     **kwargs
-        The keyword arguments to be passed to the underlying solver at solve
-        time.
+        Keyword arguments to be passed to the `setup` function of the solver.
 
     """
     def __init__(self, dynamics, constraints, cost, solver, **kwargs):
@@ -53,21 +49,27 @@ class OptimalControlBase(object):
         self.constraints = constraints
         self.cost = cost
         self.solver = solver
-        self.kwargs = kwargs
 
-        self.update()
+        self.update(**kwargs)
 
-    def update(self):
+    def update(self, **kwargs):
         """
         Update problem representation based on the current attributes.
 
         Update internal representations of the problem parameters according to
         the current attributes. This method should be called after changing any
         of the attributes to ensure a solution is valid for the current state.
+
+        Parameters
+        ----------
+        **kwargs
+            Keyword arguments to be passed to the `setup` function of the
+            solver.
+
         """
         raise NotImplementedError
 
-    def solve(self, warm_start=None):
+    def solve(self, warm_start=None, **kwargs):
         """
         Solve the optimal control problem. Return the optimal problem solution.
 
@@ -79,6 +81,8 @@ class OptimalControlBase(object):
         ----------
         warm_start : numpy.ndarray
             An initial guess at the optimal solution.
+        **kwargs
+            Any keyword arguments to be passed to the solver's `solve` method.
 
         Returns
         -------

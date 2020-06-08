@@ -66,8 +66,8 @@ def _to_p_q(cost):
     u_d = cost.desired_ctrl(None)
 
     P = scipy.sparse.bmat([[QS, None], [None, R]], format="csc")
-    q = np.concatenate([-QS.transpose().dot(x_d).toarray(),
-                        -R.transpose().dot(u_d).toarray()])
+    q = np.concatenate([-QS.transpose().dot(x_d),
+                        -R.transpose().dot(u_d)])
 
     return P, q
 
@@ -96,11 +96,11 @@ def _to_a_l_u(constraints):
         The u vector of the linear inequality constraints: l <= Ay <= u.
 
     """
-    A_eq, b_eq = constraints.equality_mat_vec()
-    A_ineq, b_ineq = constraints.inequality_mat_vec()
+    A_eq, B_eq, b_eq = constraints.equality_mat_vec(None)
+    A_ineq, B_ineq, b_ineq = constraints.inequality_mat_vec(None)
 
-    A = scipy.sparse.vstack([A_eq, A_ineq])
-    l = np.concatenate([b_eq, np.zeros_like(b_ineq)])
+    A = scipy.sparse.bmat([[A_eq, B_eq], [A_ineq, B_ineq]], format="csc")
+    l = np.concatenate([b_eq, np.full_like(b_ineq, -np.inf)])
     u = np.concatenate([b_eq, b_ineq])
 
     return A, l, u
@@ -135,11 +135,18 @@ class OSQP(solver.Solver):
         The u vector of the OSQP constraints l <= A y <= u.
     is_setup : bool
         Indicates if setup has been called or not.
+    kwargs : dict of {str: any}
+        Keyword arguments to be passed to the set-up
 
+    Parameters
+    ----------
+    **kwargs
+        Keyword arguments to be passed to the internal solver instance at set-up
+        time.
 
     """
     def __init__(self):
-        super(OSQP, self).__init__(self)
+        super(OSQP, self).__init__()
         self.solver = osqp.OSQP()
         self.quadratic = None
         self.linear = None
@@ -218,8 +225,10 @@ class OSQP(solver.Solver):
             None if no solution was found (infeasible).
 
         """
+        warm_start = kwargs.pop("warm_start")
         if kwargs:
             self.solver.update_settings(**kwargs)
-
+        if warm_start:
+            self.solver.warm_start(x=warm_start)
         results = self.solver.solve()
         return results.x

@@ -45,6 +45,7 @@ class ContinuousCost(Cost, objective.ContinuousObjective):  # pylint: disable=ab
 
         return instantaneous + terminal
 
+
 class DiscreteCost(Cost, objective.DiscreteObjective):  # pylint: disable=abstract-method
     """Represent a discrete cost function for minimization."""
     def cost(self, k_initial, k_final, state_traj, ctrl_traj):
