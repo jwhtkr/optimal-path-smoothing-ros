@@ -45,8 +45,8 @@ class SmoothPathLinear(fixed_time.FixedTime):
         dynamics = self._integrator_dynamics()
 
         super(SmoothPathLinear, self).__init__(dynamics, constraints, cost,
-                                                  solver, n_step, t_final,
-                                                  time_step, **kwargs)
+                                               solver, n_step, t_final,
+                                               time_step, **kwargs)
 
     def update(self, **kwargs):
         """
@@ -164,9 +164,9 @@ class SmoothPathLinear(fixed_time.FixedTime):
         S = scipy.sparse.bmat(S_list, format="csc")
 
         x_d = np.concatenate([self.cost.desired_state(i*self.time_step)
-                              for i in range(self.n_step)]).reshape(-1,1)
+                              for i in range(self.n_step)]).reshape(-1, 1)
         u_d = np.concatenate([self.cost.desired_ctrl(i*self.time_step)
-                              for i in range(self.n_step-1)]).reshape(-1,1)
+                              for i in range(self.n_step-1)]).reshape(-1, 1)
 
         def desired_state(t):
             """Return the desired state."""
@@ -219,12 +219,17 @@ class SmoothPathLinear(fixed_time.FixedTime):
             ineq_const[1].append(ineq[1])
             ineq_const[2].append(ineq[2])
 
-        eq_const = (scipy.sparse.block_diag(eq_const[0]),
-                    scipy.sparse.block_diag(eq_const[1]),
+        n_ctrl = self.constraints.n_ctrl
+        eq_const = (scipy.sparse.block_diag(eq_const[0],
+                                            format="csc"),
+                    scipy.sparse.block_diag(eq_const[1],
+                                            format="csc")[:, :-n_ctrl],
                     np.concatenate(eq_const[2]))
 
-        ineq_const = (scipy.sparse.block_diag(ineq_const[0]),
-                      scipy.sparse.block_diag(ineq_const[1]),
+        ineq_const = (scipy.sparse.block_diag(ineq_const[0],
+                                              format="csc"),
+                      scipy.sparse.block_diag(ineq_const[1],
+                                              format="csc")[:, :-n_ctrl],
                       np.concatenate(ineq_const[2]))
 
         def eq_mats(t):
@@ -299,14 +304,28 @@ if __name__ == "__main__":
     S_mat = np.diag([10., 10., 0., 0., 0., 0., 0., 0.])
     cst = quad_cost.ContinuousQuadraticCost(Q_mat, R_mat, S_mat,
                                             desired_state=path)
-    cnstrnts = None
+
+    def term_eq_mats(t):
+        """Return terminal constraint matrices."""
+        if t == time[-1]:
+            return (np.eye(8), np.zeros((8, 2)))
+        return (np.zeros((0, 8)), np.zeros((0, 2)))
+
+    def term_eq_val(t):
+        """Return terminal constraint values."""
+        if t == time[-1]:
+            return x_desired[:, -1].reshape(-1, 1)
+        return np.zeros((0, 1))
+    cnstrnts = lin_const.LinearConstraints(eq_mat_list=[term_eq_mats],
+                                           eq_val_list=[term_eq_val])
+    # cnstrnts = None
     slvr = osqp.OSQP()
 
     x_0 = x_desired[:, 0].reshape(2, 4, order="F").copy()
     x_0[1, 0] = 0.5
-    x_0[:,1:] = 0.
+    x_0[:, 1:] = 0.
     opt_ctrl = SmoothPathLinear(cnstrnts, cst, slvr, len(time), x_0,
-                                   t_final=time[-1])
+                                t_final=time[-1])
 
     st, ctl = opt_ctrl.solve()
     st = st.reshape(8, -1, order="F")

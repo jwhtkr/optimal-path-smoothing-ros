@@ -45,11 +45,11 @@ class FixedTime(dir_opt_ctrl.DirectOptimalControl):
         if t_final <= 0.:
             t_final = time_step*n_step
         if time_step <= 0.:
-            time_step = t_final/n_step
+            time_step = t_final/(n_step-1)
         if not t_final or not time_step:
             raise TypeError("At least one of t_final or step size must be "
                             "specified. Any non-negative value counts as being "
-                            "unspecified.")
+                            "specified.")
         self.t_final = t_final
         self.time_step = time_step
 

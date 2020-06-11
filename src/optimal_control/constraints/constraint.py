@@ -35,7 +35,25 @@ class Constraint(object):
     constrained. This is meant as a base class, with child classes being, e.g.,
     a linear inequality constraint, a non-linear equality constraint, etc.
 
+    Attributes
+    ----------
+    n_state : int
+        The number of states of the constraint.
+    n_ctrl : int
+        The number of control inputs in the constraint.
+
+    Parameters
+    ----------
+    n_state : int
+        The number of states of the constraint.
+    n_ctrl : int
+        The number of control inputs in the constraint.
+
     """
+    def __init__(self, n_state, n_ctrl):
+        self.n_state = n_state
+        self.n_ctrl = n_ctrl
+
     def is_satisfied(self, t, state, ctrl):
         """
         Return a boolean indicating if the constraint is satisfied or violated.
@@ -127,6 +145,10 @@ class EqualityConstraint(Constraint):  # pylint: disable=abstract-method
 
     Attributes
     ----------
+    n_state : int
+        The number of states of the constraint.
+    n_ctrl : int
+        The number of control inputs in the constraint.
     eq_val : func
         A function of time that returns the desired value of the constraint.
         I.e.: h(t, state, ctrl) = eq_val(t).
@@ -136,6 +158,10 @@ class EqualityConstraint(Constraint):  # pylint: disable=abstract-method
 
     Parameters
     ----------
+    n_state : int
+        The number of states of the constraint.
+    n_ctrl : int
+        The number of control inputs in the constraint.
     eq_val : func
         A function of time that returns the desired value of the constraint.
         I.e.: h(t, state, ctrl) = eq_val(t).
@@ -144,7 +170,8 @@ class EqualityConstraint(Constraint):  # pylint: disable=abstract-method
         abs(h(t, state, ctrl) - eq_val(t)) < eps. Its default value is 1e-6.
 
     """
-    def __init__(self, eq_val, eps=1e-6):
+    def __init__(self, n_state, n_ctrl, eq_val, eps=1e-6):
+        super(EqualityConstraint, self).__init__(n_state, n_ctrl)
         self.eq_val = eq_val
         self.eps = eps
 
@@ -170,6 +197,10 @@ class InequalityConstraint(Constraint):  # pylint: disable=abstract-method
 
     Attributes
     ----------
+    n_state : int
+        The number of states of the constraint.
+    n_ctrl : int
+        The number of control inputs in the constraint.
     bound : func
         A function of time that returns the converted upper bound constraint
         used to make all inequality constraints consistently of the form
@@ -178,13 +209,18 @@ class InequalityConstraint(Constraint):  # pylint: disable=abstract-method
 
     Parameters
     ----------
+    n_state : int
+        The number of states of the constraint.
+    n_ctrl : int
+        The number of control inputs in the constraint.
     upper_bound : func
         A function of time that returns the upper bound of an inequality
         constraint. The constraint is assumed to be of the form
         g(t, state, ctrl) <= upper_bound.
 
     """
-    def __init__(self, upper_bound):
+    def __init__(self, n_state, n_ctrl, upper_bound):
+        super(InequalityConstraint, self).__init__(n_state, n_ctrl)
         self.bound = upper_bound
 
     def is_satisfied(self, t, state, ctrl):

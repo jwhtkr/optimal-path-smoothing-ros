@@ -22,23 +22,45 @@ class Constraints(object):
 
     Parameters
     ----------
-    eq_constraints : list of EqualityConstraint
-        A list of equality constraints for an optimization problem.
-    ineq_constraints : list of InequalityConstraint
-        A list of inequality constraints for an optimization problem.
+    eq_constraints : list of EqualityConstraint, optional
+        A list of equality constraints for an optimization problem. If not
+        specified, then `ineq_constraints` must be specified.
+    ineq_constraints : list of InequalityConstraint, optional
+        A list of inequality constraints for an optimization problem. If not
+        specified, then `eq_constraints` must be specified.
     constraints : Constraints, optional
         Another :obj:`Constraints` object from which the constraints are to be
         inherited. In other words, the constraints from `constraints` will be
         appended to `eq_constraints` and `ineq_constraints`.
 
     """
-    def __init__(self, eq_constraints, ineq_constraints, constraints=None):
-        self.eq_constraints = eq_constraints
-        self.ineq_constraints = ineq_constraints
+    def __init__(self, eq_constraints=(), ineq_constraints=(),
+                 constraints=None):
+        if not eq_constraints and not ineq_constraints and not constraints:
+            raise ValueError("At least one of `eq_constraints`, "
+                             "`ineq_constraints`, or `constraints` must be "
+                             "specified.")
+
+        self.eq_constraints = list(eq_constraints)
+        self.ineq_constraints = list(ineq_constraints)
 
         if constraints is not None:
             self.eq_constraints.extend(constraints.eq_constraints)
             self.ineq_constraints.extend(constraints.ineq_constraints)
+
+        n_state = []
+        n_ctrl = []
+        for const in self.eq_constraints + self.ineq_constraints:
+            n_state.append(const.n_state)
+            n_ctrl.append(const.n_ctrl)
+        # if all values of n_state and n_ctrl are not consistent its a problem.
+        if (not n_state.count(n_state[0]) == len(n_state)
+                or not n_ctrl.count(n_ctrl[0]) == len(n_ctrl)):
+            raise ValueError("All constraints must be for the same number of "
+                             "states and controls.")
+        else:
+            self.n_state = n_state[0]
+            self.n_ctrl = n_ctrl[0]
 
     def is_satisfied(self, t, state, ctrl):
         """

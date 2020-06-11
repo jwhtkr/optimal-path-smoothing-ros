@@ -60,7 +60,7 @@ class LinearConstraints(constraints.Constraints):
 
     def equality_mat_vec(self, t, as_sparse=True):
         """
-        Return the aggregate equality constraint's A, B, and b of Ax + Bu = b.
+        Return the joint equality constraint's A, B, and b of Ax + Bu = b.
 
         Parameters
         ----------
@@ -84,13 +84,17 @@ class LinearConstraints(constraints.Constraints):
         eq_mats_B = []
         for const in self.eq_constraints:
             A, B = const.eq_mats(t)
-            eq_mats_A.append(scipy.sparse.csc_matrix(A))
-            eq_mats_B.append(scipy.sparse.csc_matrix(B))
+            if A is not None and B is not None:
+                eq_mats_A.append(scipy.sparse.csc_matrix(A))
+                eq_mats_B.append(scipy.sparse.csc_matrix(B))
 
-        eq_vecs = [const.eq_val(t) for const in self.eq_constraints]
+        eq_vecs = [const.eq_val(t) for const in self.eq_constraints
+                   if const.eq_val(t) is not None]
 
-        if eq_mats_A is None or eq_mats_B is None or eq_vecs is None:
-            return None, None, np.zeros((0, 1))
+        if not eq_mats_A or not eq_mats_B or not eq_vecs:
+            return (scipy.sparse.csc_matrix((0, self.n_state)),
+                    scipy.sparse.csc_matrix((0, self.n_ctrl)),
+                    np.zeros((0, 1)))
 
         eq_mat_A = scipy.sparse.vstack(eq_mats_A)
         eq_mat_B = scipy.sparse.vstack(eq_mats_B)
@@ -129,10 +133,12 @@ class LinearConstraints(constraints.Constraints):
             ineq_mats_A.append(scipy.sparse.csc_matrix(A))
             ineq_mats_B.append(scipy.sparse.csc_matrix(B))
 
-        ineq_vecs = [const.eq_val(t) for const in self.eq_constraints]
+        ineq_vecs = [const.bound(t) for const in self.ineq_constraints]
 
         if not ineq_mats_A or not ineq_mats_B or not ineq_vecs:
-            return None, None, np.zeros((0, 1))
+            return (scipy.sparse.csc_matrix((0, self.n_state)),
+                    scipy.sparse.csc_matrix((0, self.n_ctrl)),
+                    np.zeros((0, 1)))
 
         ineq_mat_A = scipy.sparse.vstack(ineq_mats_A)
         ineq_mat_B = scipy.sparse.vstack(ineq_mats_B)
@@ -167,11 +173,15 @@ class LinearEqualityConstraint(constraint.EqualityConstraint):
         A function of time that returns the the b vector of a linear equality
         constraint Ax + Bu = b.
     eps : double, optional
-        The tolerance of the equality.
+        The tolerance of the equality. The default value is 1e-6
 
     """
     def __init__(self, eq_mats, eq_val, eps=1e-6):
-        super(LinearEqualityConstraint, self).__init__(eq_val, eps)
+        A, B = eq_mats(0)
+        n_state = A.shape[1]
+        n_ctrl = B.shape[1]
+        super(LinearEqualityConstraint, self).__init__(n_state, n_ctrl, eq_val,
+                                                       eps)
         self.eq_mats = eq_mats
 
     def constraint(self, t, state, ctrl):
@@ -189,7 +199,7 @@ class LinearInequalityConstraint(constraint.InequalityConstraint):
 
     Attributes
     ----------
-    matrices : func
+    ineq_mats : func
         A function of time that returns the A and B matrices of Ax + Bu <= b.
         Returns a tuple of (A, B)
     bound : func
@@ -197,17 +207,70 @@ class LinearInequalityConstraint(constraint.InequalityConstraint):
 
     Parameters
     ----------
-    matrices : func
+    ineq_mats : func
         A function of time that returns the A and B matrices of Ax + Bu <= b.
         Returns a tuple of (A, B)
     bound : func
         A function of time that returns the b vector of Ax + Bu <= b.
 
     """
-    def __init__(self, matrices, bound):
-        super(LinearInequalityConstraint, self).__init__(upper_bound=bound)
-        self.matrices = matrices
+    def __init__(self, ineq_mats, bound):
+        A, B = ineq_mats(0)
+        n_state = A.shape[1]
+        n_ctrl = B.shape[1]
+        super(LinearInequalityConstraint, self).__init__(n_state, n_ctrl,
+                                                         upper_bound=bound)
+        self.ineq_mats = ineq_mats
 
     def constraint(self, t, state, ctrl):
-        A, B = self.matrices(t)
+        A, B = self.ineq_mats(t)
         return np.dot(A, state) + np.dot(B, ctrl)
+
+
+class LinearTimeInstantConstraint(LinearEqualityConstraint):
+    """
+    Represent a terminal constraint that is linear in the end state and control.
+
+    The A and B matrices of the terminal constraint Ax_f + Bu_f = b are used,
+    along with zero matrices for any other time to create the time dependent
+    constraint.
+
+    Attributes
+    ----------
+    eq_mats_final : tuple of numpy.ndarray
+        A tuple of (A, B) the A and B matrices of the linear terminal constraint
+        Ax_f + Bu_f = b
+    eq_val : numpy.ndarray
+        The b vector of the linear terminal constraint Ax_f + Bu_f = b.
+    eps : double
+        The tolerance of the equality.
+
+    Parameters
+    ----------
+    t_final : float
+        The final time at which the constraint is applicable.
+    eq_mats_final : tuple of numpy.ndarray
+        A tuple of (A, B) the A and B matrices of the linear terminal constraint
+        Ax_f + Bu_f = b
+    eq_val : func
+        A function of time that returns the b vector of a linear terminal
+        constraint Ax_f + Bu_f = b.
+    eps : double, optional
+        The tolerance of the equality. The default value is 1e-6.
+    """
+    def __init__(self, t_inst, eq_mats_inst, eq_val_inst, eps=1e-6):
+        zero_mats = (np.zeros((0, eq_mats_inst[0].shape[1])),
+                     np.zeros((0, eq_mats_inst[1].shape[1])))
+        def eq_mats(t):
+            """Return `eq_mats_inst` if `t_inst`, otherwise zero matrices."""
+            if abs(t-t_inst) <= eps:
+                return eq_mats_inst
+            return zero_mats
+
+        def eq_val(t):
+            """Return `eq_val_inst` if `t_inst`, otherwise a zero vector."""
+            if abs(t-t_inst) <= eps:
+                return eq_val_inst
+            return np.zeros((0, 1))
+
+        super(LinearTimeInstantConstraint, self).__init__(eq_mats, eq_val, eps)

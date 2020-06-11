@@ -60,7 +60,7 @@ def test():
 
 
 if __name__ == "__main__":
-    import time
+    # import time
     # t_start = time.time()
     test()
     # print(time.time()-t_start)
