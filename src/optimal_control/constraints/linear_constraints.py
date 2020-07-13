@@ -1,6 +1,6 @@
 """Contains classes to represent linear constraints."""
 
-import scipy.sparse
+import optimal_control.sparse_utils as sparse
 import numpy as np
 
 from optimal_control.constraints import constraints, constraint
@@ -28,14 +28,18 @@ class LinearConstraints(constraints.Constraints):
 
     Parameters
     ----------
-    A_eq : list of func, optional
+    eq_mat_list : list of func, optional
         A list of functions that return the A matrices of Ay = b.
-    b_eq : list of func, optional
+    eq_val_list : list of func, optional
         A list of functions that return the b vectors of Ay = b.
-    A_ineq : list of func, optional
+    eq_constraints : list of LinearEqualityConstraint, optional
+        A list of pre-built `LinearEqualityConstraint` (or sub-class) objects.
+    ineq_mat_list : list of func, optional
         A list of functions that return the A matrices of Ay <= b.
-    b_ineq : list of func, optional
+    ineq_bound_list : list of func, optional
         A list of functions that return the b vectors of Ay <= b.
+    ineq_constraints : list of LinearInequalityConstraint, optional
+        A list of pre-built `LinearInequalityConstraint` (or sub-class) objects.
     eps : double, optional
         The allowable tolerance for considering the equality constraint to be
         satisfied. Defaults to 1e-6.
@@ -43,18 +47,35 @@ class LinearConstraints(constraints.Constraints):
         Keyword arguments to be passed to the parent class.
 
     """
-    def __init__(self, eq_mat_list=(), eq_val_list=(), ineq_mat_list=(),
-                 ineq_bound_list=(), eps=1e-6, **kwargs):
+    def __init__(self, eq_mat_list=(), eq_val_list=(), eq_constraints=(),
+                 ineq_mat_list=(), ineq_bound_list=(), ineq_constraints=(),
+                 eps=1e-6, **kwargs):
         if (len(eq_mat_list) != len(eq_val_list)
                 or len(ineq_mat_list) != len(ineq_bound_list)):
             raise TypeError("The lengths of the respective lists of matrices "
                             "and value/bound vectors must be consistent for "
                             "both the equality and inequality lists.")
+        if not all([isinstance(const, LinearEqualityConstraint)
+                    for const in eq_constraints]):
+            raise TypeError("All passed in pre-built `eq_constraints` must be "
+                            "linear (instance or subclass of "
+                            "`LinearEqualityConstraint`).")
+        if not all([isinstance(const, LinearInequalityConstraint)
+                    for const in ineq_constraints]):
+            raise TypeError("All passed in pre-built `ineq_constraints` must be"
+                            " linear (instance or subclass of "
+                            "`LinearInequalityConstraint`).")
+
         eq_consts = [LinearEqualityConstraint(eq_mat, eq_val, eps)
                      for eq_mat, eq_val in zip(eq_mat_list, eq_val_list)]
         ineq_consts = [LinearInequalityConstraint(ineq_mat, ineq_bound)
                        for ineq_mat, ineq_bound in zip(ineq_mat_list,
                                                        ineq_bound_list)]
+        if eq_constraints:
+            eq_consts.extend(eq_constraints)
+        if ineq_constraints:
+            ineq_consts.extend(ineq_constraints)
+
         super(LinearConstraints, self).__init__(eq_consts, ineq_consts,
                                                 **kwargs)
 
@@ -85,19 +106,19 @@ class LinearConstraints(constraints.Constraints):
         for const in self.eq_constraints:
             A, B = const.eq_mats(t)
             if A is not None and B is not None:
-                eq_mats_A.append(scipy.sparse.csc_matrix(A))
-                eq_mats_B.append(scipy.sparse.csc_matrix(B))
+                eq_mats_A.append(sparse.coo_matrix(A))
+                eq_mats_B.append(sparse.coo_matrix(B))
 
         eq_vecs = [const.eq_val(t) for const in self.eq_constraints
                    if const.eq_val(t) is not None]
 
         if not eq_mats_A or not eq_mats_B or not eq_vecs:
-            return (scipy.sparse.csc_matrix((0, self.n_state)),
-                    scipy.sparse.csc_matrix((0, self.n_ctrl)),
+            return (sparse.coo_matrix((0, self.n_state)),
+                    sparse.coo_matrix((0, self.n_ctrl)),
                     np.zeros((0, 1)))
 
-        eq_mat_A = scipy.sparse.vstack(eq_mats_A)
-        eq_mat_B = scipy.sparse.vstack(eq_mats_B)
+        eq_mat_A = sparse.vstack(eq_mats_A)
+        eq_mat_B = sparse.vstack(eq_mats_B)
         eq_vec = np.concatenate(eq_vecs)
 
         if as_sparse:
@@ -130,18 +151,18 @@ class LinearConstraints(constraints.Constraints):
         ineq_mats_B = []
         for const in self.ineq_constraints:
             A, B = const.ineq_mats(t)
-            ineq_mats_A.append(scipy.sparse.csc_matrix(A))
-            ineq_mats_B.append(scipy.sparse.csc_matrix(B))
+            ineq_mats_A.append(sparse.coo_matrix(A))
+            ineq_mats_B.append(sparse.coo_matrix(B))
 
         ineq_vecs = [const.bound(t) for const in self.ineq_constraints]
 
         if not ineq_mats_A or not ineq_mats_B or not ineq_vecs:
-            return (scipy.sparse.csc_matrix((0, self.n_state)),
-                    scipy.sparse.csc_matrix((0, self.n_ctrl)),
+            return (sparse.coo_matrix((0, self.n_state)),
+                    sparse.coo_matrix((0, self.n_ctrl)),
                     np.zeros((0, 1)))
 
-        ineq_mat_A = scipy.sparse.vstack(ineq_mats_A)
-        ineq_mat_B = scipy.sparse.vstack(ineq_mats_B)
+        ineq_mat_A = sparse.vstack(ineq_mats_A)
+        ineq_mat_B = sparse.vstack(ineq_mats_B)
 
         ineq_vec = np.concatenate(ineq_vecs)
         if as_sparse:
@@ -259,8 +280,8 @@ class LinearTimeInstantConstraint(LinearEqualityConstraint):
         The tolerance of the equality. The default value is 1e-6.
     """
     def __init__(self, t_inst, eq_mats_inst, eq_val_inst, eps=1e-6):
-        zero_mats = (np.zeros((0, eq_mats_inst[0].shape[1])),
-                     np.zeros((0, eq_mats_inst[1].shape[1])))
+        zero_mats = (np.empty((0, eq_mats_inst[0].shape[1])),
+                     np.empty((0, eq_mats_inst[1].shape[1])))
         def eq_mats(t):
             """Return `eq_mats_inst` if `t_inst`, otherwise zero matrices."""
             if abs(t-t_inst) <= eps:

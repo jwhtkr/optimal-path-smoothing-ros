@@ -1,7 +1,7 @@
 """Contains the class for performing optimal trajectory smoothing."""
 
 
-import scipy.sparse
+import optimal_control.sparse_utils as sparse
 import numpy as np
 
 import optimal_control.opt_ctrl.direct.fixed_time as fixed_time
@@ -9,6 +9,12 @@ import optimal_control.dynamics.integrator_dynamics as int_dyn
 import optimal_control.objectives.quadratic_cost as quad_cost
 import optimal_control.constraints.linear_constraints as lin_const
 import optimal_control.solvers.osqp_solver as osqp
+
+
+def interpolate(arg1, arg1_prev, arg1_next, arg2_prev, arg2_next):
+    """Interpolate arg2 based on arg1 (linearly)."""
+    return (arg1-arg1_prev)/(arg1_next-arg1_prev)*(arg2_next-arg2_prev)\
+        + arg2_prev
 
 
 class SmoothPathLinear(fixed_time.FixedTime):
@@ -102,9 +108,8 @@ class SmoothPathLinear(fixed_time.FixedTime):
 
         M = discrete_dyn.n_state*self.n_step
 
-        A_x = -scipy.sparse.eye(m=M, n=discrete_dyn.n_state*self.n_step,
-                                format="dok")
-        A_u = scipy.sparse.dok_matrix((M, discrete_dyn.n_ctrl*(self.n_step-1)))
+        A_x = -sparse.eye(m=M, n=discrete_dyn.n_state*self.n_step, format="dok")
+        A_u = sparse.dok_matrix((M, discrete_dyn.n_ctrl*(self.n_step-1)))
         b = np.zeros((M,))
 
         b[:discrete_dyn.n_state] = -self.initial_state.flatten()
@@ -147,21 +152,18 @@ class SmoothPathLinear(fixed_time.FixedTime):
         n_state = self.n_dim * self.n_smooth
         M_x = n_state*self.n_step
 
-        Q_sparse = scipy.sparse.csc_matrix(self.cost.inst_state_cost)
-        Q_sub = scipy.sparse.block_diag([Q_sparse
-                                         for _ in range(self.n_step-1)],
-                                        format="csc")
+        Q_sparse = sparse.coo_matrix(self.cost.inst_state_cost)
+        Q_sub = sparse.block_diag([Q_sparse for _ in range(self.n_step-1)])
         Q_list = [[Q_sub, None],
-                  [None, scipy.sparse.csc_matrix((n_state, n_state))]]
-        Q = scipy.sparse.bmat(Q_list, format="csc")
+                  [None, sparse.coo_matrix((n_state, n_state))]]
+        Q = sparse.bmat(Q_list, format="csc")
 
-        R = scipy.sparse.block_diag([self.cost.inst_ctrl_cost
-                                     for _ in range(self.n_step-1)],
-                                    format="csc")
+        R = sparse.block_diag([self.cost.inst_ctrl_cost
+                               for _ in range(self.n_step-1)])
 
-        S_list = [[scipy.sparse.csc_matrix((M_x-n_state, M_x-n_state)), None],
+        S_list = [[sparse.coo_matrix((M_x-n_state, M_x-n_state)), None],
                   [None, self.cost.term_state_cost]]
-        S = scipy.sparse.bmat(S_list, format="csc")
+        S = sparse.bmat(S_list, format="csc")
 
         x_d = np.concatenate([self.cost.desired_state(i*self.time_step)
                               for i in range(self.n_step)]).reshape(-1, 1)
@@ -220,22 +222,18 @@ class SmoothPathLinear(fixed_time.FixedTime):
             ineq_const[2].append(ineq[2])
 
         n_ctrl = self.constraints.n_ctrl
-        eq_const = (scipy.sparse.block_diag(eq_const[0],
-                                            format="csc"),
-                    scipy.sparse.block_diag(eq_const[1],
-                                            format="csc")[:, :-n_ctrl],
+        eq_const = (sparse.block_diag(eq_const[0]),
+                    sparse.block_diag(eq_const[1]),
                     np.concatenate(eq_const[2]))
 
-        ineq_const = (scipy.sparse.block_diag(ineq_const[0],
-                                              format="csc"),
-                      scipy.sparse.block_diag(ineq_const[1],
-                                              format="csc")[:, :-n_ctrl],
+        ineq_const = (sparse.block_diag(ineq_const[0]),
+                      sparse.block_diag(ineq_const[1]),
                       np.concatenate(ineq_const[2]))
 
         def eq_mats(t):
             """Return the matrices of the aggregate equality constraint."""
             del t
-            return eq_const[0], eq_const[1]
+            return eq_const[0], eq_const[1].tocsc()[:, :-n_ctrl].tocoo()
 
         def eq_val(t):
             """Return the vector of the aggregate equality constraint."""
@@ -245,17 +243,19 @@ class SmoothPathLinear(fixed_time.FixedTime):
         def ineq_mats(t):
             """Return the matrices of the aggregate inequality constraint."""
             del t
-            return ineq_const[0], ineq_const[1]
+            return ineq_const[0], ineq_const[1].tocsc()[:, :-n_ctrl].tocoo()
 
         def ineq_bound(t):
             """Return the vector of the aggregate inequality constraint."""
             del t
             return ineq_const[2]
 
-        return lin_const.LinearConstraints([eq_mats, dyn_constraint.eq_mats],
-                                           [eq_val, dyn_constraint.eq_val],
-                                           [ineq_mats],
-                                           [ineq_bound])
+        return lin_const.LinearConstraints(eq_mat_list=[eq_mats,
+                                                        dyn_constraint.eq_mats],
+                                           eq_val_list=[eq_val,
+                                                        dyn_constraint.eq_val],
+                                           ineq_mat_list=[ineq_mats],
+                                           ineq_bound_list=[ineq_bound])
 
 
 if __name__ == "__main__":
@@ -270,11 +270,6 @@ if __name__ == "__main__":
         """Return the path based on the pts in function scope."""
         if t_in < 0:
             raise ValueError("t must be greater than 0.")
-
-        def interpolate(arg1, arg1_prev, arg1_next, arg2_prev, arg2_next):
-            """Interpolate b based on a (linearly)."""
-            return (arg1-arg1_prev)/(arg1_next-arg1_prev)*(arg2_next-arg2_prev)\
-                + arg2_prev
 
         for i, pt in enumerate(pts):
             t, x, y = pt
@@ -305,19 +300,35 @@ if __name__ == "__main__":
     cst = quad_cost.ContinuousQuadraticCost(Q_mat, R_mat, S_mat,
                                             desired_state=path)
 
-    def term_eq_mats(t):
-        """Return terminal constraint matrices."""
-        if t == time[-1]:
-            return (np.eye(8), np.zeros((8, 2)))
-        return (np.zeros((0, 8)), np.zeros((0, 2)))
+    # def term_eq_mats(t):
+    #     """Return terminal constraint matrices."""
+    #     if t == time[-1]:
+    #         return (np.eye(8), np.zeros((8, 2)))
+    #     return (np.zeros((0, 8)), np.zeros((0, 2)))
 
-    def term_eq_val(t):
-        """Return terminal constraint values."""
-        if t == time[-1]:
-            return x_desired[:, -1].reshape(-1, 1)
-        return np.zeros((0, 1))
-    cnstrnts = lin_const.LinearConstraints(eq_mat_list=[term_eq_mats],
-                                           eq_val_list=[term_eq_val])
+    # def term_eq_val(t):
+    #     """Return terminal constraint values."""
+    #     if t == time[-1]:
+    #         return x_desired[:, -1].reshape(-1, 1)
+    #     return np.zeros((0, 1))
+    # cnstrnts = lin_const.LinearConstraints(eq_mat_list=[term_eq_mats],
+    #                                        eq_val_list=[term_eq_val])
+    eq_matrices = (np.eye(N=2, M=8), np.zeros((2, 2)))
+    # term_cnstrnt = lin_const.LinearTimeInstantConstraint(time[-1],
+    #                                                      eq_mats,
+    #                                                      x_desired[:2, -1].reshape(-1, 1))
+    # mid_cnstrnt = lin_const.LinearTimeInstantConstraint(time[len(time)//2],
+    #                                                     eq_mats,
+    #                                                     x_desired[:2, len(time)//2].reshape(-1, 1))
+    # inst_cnstrnts = [term_cnstrnt, mid_cnstrnt]
+
+    inst_cnstrnts = []
+    for it in range(10, len(time), 10):
+        x_des = x_desired[:2, it].reshape(-1, 1)
+        inst_cnstrnts.append(lin_const.LinearTimeInstantConstraint(time[it],
+                                                                   eq_matrices,
+                                                                   x_des))
+    cnstrnts = lin_const.LinearConstraints(eq_constraints=inst_cnstrnts)
     # cnstrnts = None
     slvr = osqp.OSQP()
 

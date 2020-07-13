@@ -1,7 +1,7 @@
 """Wrap the OSQP solver for use with Optimal Control."""
 
 
-import scipy.sparse
+import optimal_control.sparse_utils as sparse
 import numpy as np
 
 import osqp
@@ -58,18 +58,18 @@ def _to_p_q(cost):
         The q vector of a quadratic cost of form J(y) = y^T P y + q^T y.
 
     """
-    Q = scipy.sparse.csc_matrix(cost.inst_state_cost)
-    R = scipy.sparse.csc_matrix(cost.inst_ctrl_cost)
-    S = scipy.sparse.csc_matrix(cost.term_state_cost)
+    Q = sparse.coo_matrix(cost.inst_state_cost)
+    R = sparse.coo_matrix(cost.inst_ctrl_cost)
+    S = sparse.coo_matrix(cost.term_state_cost)
     QS = Q + S
     x_d = cost.desired_state(None)
     u_d = cost.desired_ctrl(None)
 
-    P = scipy.sparse.bmat([[QS, None], [None, R]], format="csc")
+    P = sparse.bmat([[QS, None], [None, R]])
     q = np.concatenate([-QS.transpose().dot(x_d),
                         -R.transpose().dot(u_d)])
 
-    return P, q
+    return P.tocsc(), q
 
 
 def _to_a_l_u(constraints):
@@ -99,11 +99,11 @@ def _to_a_l_u(constraints):
     A_eq, B_eq, b_eq = constraints.equality_mat_vec(None)
     A_ineq, B_ineq, b_ineq = constraints.inequality_mat_vec(None)
 
-    A = scipy.sparse.bmat([[A_eq, B_eq], [A_ineq, B_ineq]], format="csc")
+    A = sparse.bmat([[A_eq, B_eq], [A_ineq, B_ineq]])
     l = np.concatenate([b_eq, np.full_like(b_ineq, -np.inf)])
     u = np.concatenate([b_eq, b_ineq])
 
-    return A, l, u
+    return A.tocsc(), l, u
 
 
 class OSQP(solver.Solver):
