@@ -7,7 +7,11 @@ class Solver(object):
     Represent an optimization solver in an abstract way.
 
     Child classes will wrap an optimization class or library and provide the
-    interface defined in this base class.
+    interface defined in this base class. Because the solver is instantiated on
+    its own (before the problem is composed/problem info is available) it is
+    required to call the `setup` method before calling the `solve` method. This
+    can also be used in cases when the problem needs to be updated with
+    modified parameters (MPC).
 
     Attributes
     ----------

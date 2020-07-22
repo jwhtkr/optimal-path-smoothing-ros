@@ -1,9 +1,9 @@
 """Contains the class for performing optimal trajectory smoothing."""
 
 
-import optimal_control.sparse_utils as sparse
 import numpy as np
 
+import optimal_control.sparse_utils as sparse
 import optimal_control.opt_ctrl.direct.fixed_time as fixed_time
 import optimal_control.dynamics.integrator_dynamics as int_dyn
 import optimal_control.objectives.quadratic_cost as quad_cost
@@ -343,11 +343,15 @@ if __name__ == "__main__":
     ctl = ctl.reshape(2, -1, order="F")
 
     plt.plot(x_desired[0, :], x_desired[1, :], st[0, :], st[1, :])
+    labels1 = [r"$x$", r"$y$", r"$v_x$", r"$v_y$", r"$a_x$", r"$a_y$", r"$x^{(3)}$", r"$y^{(3)}$"]
+    labels2 = [r"$u_x$", r"$u_y$"]
     fig, axs = plt.subplots(8, 1)
     for k, ax in enumerate(axs):
         ax.plot(time, x_desired[k, :], time, st[k, :])
+        ax.set_ylabel(labels1[k])
     fig, axs = plt.subplots(2, 1)
     for k, ax in enumerate(axs):
         ax.plot(time[:-1], ctl[k, :])
+        ax.set_ylabel(labels2[k])
     plt.show()
     # pylint: enable=invalid-name

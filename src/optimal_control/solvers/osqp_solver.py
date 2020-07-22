@@ -1,11 +1,11 @@
 """Wrap the OSQP solver for use with Optimal Control."""
 
 
-import optimal_control.sparse_utils as sparse
 import numpy as np
 
 import osqp
 
+import optimal_control.sparse_utils as sparse
 from optimal_control.solvers import solver
 from optimal_control.objectives import quadratic_cost
 from optimal_control.constraints import linear_constraints
@@ -53,9 +53,9 @@ def _to_p_q(cost):
     Returns
     -------
     P : scipy.sparse.csc_matrix
-        The P matrix of a quadratic cost of form J(y) = y^T P y + q^T y.
+        The P matrix of a quadratic cost of form J(y) = y^T P y + 2 q^T y.
     q : numpy.ndarray
-        The q vector of a quadratic cost of form J(y) = y^T P y + q^T y.
+        The q vector of a quadratic cost of form J(y) = y^T P y + 2 q^T y.
 
     """
     Q = sparse.coo_matrix(cost.inst_state_cost)
@@ -65,7 +65,8 @@ def _to_p_q(cost):
     x_d = cost.desired_state(None)
     u_d = cost.desired_ctrl(None)
 
-    P = sparse.bmat([[QS, None], [None, R]])
+    # P = sparse.bmat([[QS, None], [None, R]])
+    P = sparse.block_diag([QS, R])
     q = np.concatenate([-QS.transpose().dot(x_d),
                         -R.transpose().dot(u_d)])
 
@@ -124,9 +125,9 @@ class OSQP(solver.Solver):
     solver : osqp.OSQP
         The internal instance of the OSQP solver.
     quadratic : numpy.ndarray or scipy.sparse.spmatrix
-        The P matrix of the OSQP cost J(y) = y^T P y + q^T y.
+        The P matrix of the OSQP cost J(y) = y^T P y + 2 q^T y.
     linear : numpy.ndarray
-        The q vector of the OSQP cost J(y) = y^T P y + q^T y.
+        The q vector of the OSQP cost J(y) = y^T P y + 2 q^T y.
     A : numpy.ndarray or scipy.sparse.spmatrix
         The A matrix of the OSQP constraints l <= A y <= u.
     lower_bound : numpy.ndarray
@@ -135,14 +136,6 @@ class OSQP(solver.Solver):
         The u vector of the OSQP constraints l <= A y <= u.
     is_setup : bool
         Indicates if setup has been called or not.
-    kwargs : dict of {str: any}
-        Keyword arguments to be passed to the set-up
-
-    Parameters
-    ----------
-    **kwargs
-        Keyword arguments to be passed to the internal solver instance at set-up
-        time.
 
     """
     def __init__(self):

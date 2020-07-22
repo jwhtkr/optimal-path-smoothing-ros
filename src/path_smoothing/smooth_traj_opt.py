@@ -1,11 +1,12 @@
 """Contains functions for matlab to call to smooth a trajectory."""
 
+from __future__ import print_function
 
 import os.path
 
 import scipy.io
 import numpy as np
-# import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 
 import path_smoothing.smooth_path as smooth
 import optimal_control.objectives.quadratic_cost as quad_cost
