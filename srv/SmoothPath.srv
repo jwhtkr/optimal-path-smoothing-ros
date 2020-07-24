@@ -6,4 +6,5 @@ std_msgs/Float32MultiArray A
 std_msgs/Float32MultiArray b 
 float32 time_step
 ---
-std_msgs/Float32MultiArray smoothed_path
+float32[] smoothed_path
+float32[] smoothed_path_snaps

@@ -2,41 +2,28 @@
 from __future__ import print_function
 
 from path_smoothing.srv import SmoothPath,SmoothPathResponse
-from std_msgs.msg import Float32MultiArray
 from path_smoothing.smooth_traj_opt import smooth_constrained
+from tools.multi_array import multi_array_to_array, array_to_multi_array
 import rospy
 import numpy as np
 
+def parse_request(req):
+    desired_path = multi_array_to_array(req.desired_path)
+    Q = multi_array_to_array(req.Q)
+    R = multi_array_to_array(req.R)
+    S = multi_array_to_array(req.S)
+    A = multi_array_to_array(req.A)
+    b = multi_array_to_array(req.b)
+    time_step = req.time_step
+    return (desired_path, Q, R, S, A, b, time_step)
+
 def handle_path_smoothing(req):
-    desired_path = req.desired_path
-    print(desired_path)
+    (desired_path, Q, R, S, A, b, time_step) = parse_request(req)
+    # temp fix for bug
+    time_step = 0.01
+    smoothed = smooth_constrained(desired_path, Q, R, S, A, b, time_step)
 
-    offset = desired_path.layout.data_offset
-
-    dim = desired_path.layout.dim
-    dim = map(lambda x: x.size, dim)
-    dim = tuple(dim)
-    print(dim)
-
-    desired_path = np.array(desired_path.data[offset:])
-    print(desired_path)
-    desired_path = desired_path.reshape(dim)
-    print(desired_path)
-    print(desired_path.shape)
-    # in:     
-    # desired_path
-    # Q
-    # R
-    # S
-    # A_mat
-    # b_mat
-    # time_step
-    #
-    # out:
-    # smoothed_path
-
-    array = Float32MultiArray(data=[0, 1, 2, 3, 4, 5])
-    path = SmoothPathResponse(smoothed_path=array)
+    path = SmoothPathResponse(smoothed_path=smoothed[0],smoothed_path_snaps=smoothed[1])
     return path
 
 def path_smoothing_server():
