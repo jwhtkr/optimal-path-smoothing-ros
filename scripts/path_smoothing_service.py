@@ -19,10 +19,7 @@ def parse_request(req):
 
 def handle_path_smoothing(req):
     (desired_path, Q, R, S, A, b, time_step) = parse_request(req)
-    # temp fix for bug
-    time_step = 0.01
     smoothed = smooth_constrained(desired_path, Q, R, S, A, b, time_step)
-
     path = SmoothPathResponse(smoothed_path=smoothed[0],smoothed_path_snaps=smoothed[1])
     return path
 

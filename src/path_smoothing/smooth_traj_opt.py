@@ -5,6 +5,7 @@ import os.path
 
 import scipy.io
 import numpy as np
+from math import floor, ceil
 # import matplotlib.pyplot as plt
 
 import path_smoothing.smooth_path as smooth
@@ -15,10 +16,13 @@ import optimal_control.solvers.osqp_solver as osqp
 
 def _path_from_mat(path_matrix, time_step):
     def path(t):
-        ind_prev = int(t//time_step)
-        alpha = (t-ind_prev*time_step)/time_step
-        x_prev = path_matrix[:, ind_prev]
-        x_next = path_matrix[:, ind_prev+1]
+        _, n_step = path_matrix.shape
+        sub_index = t/time_step
+        left = int(max(min(floor(sub_index), n_step), 0))
+        right = int(max(min(ceil(sub_index), n_step), 0))
+        alpha = (t-left*time_step)/time_step
+        x_prev = path_matrix[:, left]
+        x_next = path_matrix[:, right]
         return alpha*(x_next - x_prev) + x_prev
     return path
 
