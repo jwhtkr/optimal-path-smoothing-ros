@@ -5,7 +5,7 @@ import numpy as np
 
 import gurobipy as gp
 
-import optimal_control.sparse_utils as sparse
+from optimal_control.solvers import solver_utils
 from optimal_control.solvers import solver
 from optimal_control.objectives import quadratic_cost
 from optimal_control.constraints import linear_constraints
@@ -77,34 +77,44 @@ class Gurobi(solver.Solver):
 
         """
         if not isinstance(objective, quadratic_cost.QuadraticCost):
-            raise TypeError("Gurobi can only solve optimization problems with a "
-                            "quadratic cost.")
+            raise TypeError("Gurobi can only solve optimization problems with a"
+                            " quadratic cost.")
         if not isinstance(constraints, linear_constraints.LinearConstraints):
             raise TypeError("Gurobi can only solve optimization problems with "
                             "linear constraints.")
 
-        # if not isinstance(objective,
-        #                   quadratic_cost.DiscreteCondensedQuadraticCost):
-        #     # if cost isn't condensed already, convert to the condensed form.
-        #     objective = _to_condensed(objective)
+        if not isinstance(objective,
+                          quadratic_cost.DiscreteCondensedQuadraticCost):
+            # if cost isn't condensed already, convert to the condensed form.
+            objective = solver_utils.to_condensed(objective)
 
         # Convert to or extract the elements needed for the Gurobi formulation.
-        P, q = _to_p_q(objective)
-        A, l, u = _to_a_l_u(constraints)
+
+        # P, q = solver_utils.to_p_q(objective)
+        # A, lb, ub = solver_utils.to_a_l_u(constraints)
+
+
 
         if not self.is_setup:
-            self.solver.setup(P, q, A, l, u, **kwargs)
+            x = self.model.addMVar(shape=int(constraints.n_state),
+                                   vtype=gp.GRB.CONTINUOUS,
+                                   name="x")
+            u = self.model.addMVar(shape=int(constraints.n_ctrl),
+                                   vtype=gp.GRB.CONTINUOUS,
+                                   name="u")
+            
             self.is_setup = True
         else:
             # TODO: Adjust to only update what has changed, not the whole problem
-            self.solver.update(P, q, A, l, u)
-            self.solver.update_settings(**kwargs)
+            # self.solver.update(P, q, A, l, u)
+            # self.solver.update_settings(**kwargs)
+            pass
 
-        self.quadratic = P
-        self.linear = q
-        self.constraint_matrix = A
-        self.lower_bound = l
-        self.upper_bound = u
+        # self.quadratic = P
+        # self.linear = q
+        # self.constraint_matrix = A
+        # self.lower_bound = l
+        # self.upper_bound = u
 
     def solve(self, **kwargs):
         """

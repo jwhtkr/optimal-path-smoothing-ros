@@ -9,6 +9,7 @@ import optimal_control.dynamics.integrator_dynamics as int_dyn
 import optimal_control.objectives.quadratic_cost as quad_cost
 import optimal_control.constraints.linear_constraints as lin_const
 import optimal_control.solvers.osqp_solver as osqp
+import optimal_control.solvers.gurobi_solver as gurobi
 
 
 def interpolate(arg1, arg1_prev, arg1_next, arg2_prev, arg2_next):
@@ -330,7 +331,8 @@ if __name__ == "__main__":
                                                                    x_des))
     cnstrnts = lin_const.LinearConstraints(eq_constraints=inst_cnstrnts)
     # cnstrnts = None
-    slvr = osqp.OSQP()
+    # slvr = osqp.OSQP()
+    slvr = gurobi.Gurobi()
 
     x_0 = x_desired[:, 0].reshape(2, 4, order="F").copy()
     x_0[1, 0] = 0.5
