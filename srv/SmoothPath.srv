@@ -1,0 +1,10 @@
+std_msgs/Float32MultiArray desired_path
+std_msgs/Float32MultiArray Q
+std_msgs/Float32MultiArray R
+std_msgs/Float32MultiArray S
+std_msgs/Float32MultiArray A
+std_msgs/Float32MultiArray b 
+float32 time_step
+---
+float32[] smoothed_path
+float32[] smoothed_path_snaps
