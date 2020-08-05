@@ -58,7 +58,8 @@ class DirectOptimalControl(opt_ctrl_base.OptimalControlBase):
         Keyword arguments to be passed to the `setup` function of the solver.
 
     """
-    def __init__(self, dynamics, constraints, cost, solver, **kwargs):
+
+    def __init__(self, dynamics, constraints, cost, solver, **kwargs): # noqa: D107
         self.direct_cost = None
         self.direct_constraints = None
         super(DirectOptimalControl, self).__init__(dynamics, constraints, cost,

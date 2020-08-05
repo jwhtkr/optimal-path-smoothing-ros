@@ -1,10 +1,14 @@
 """Sparse matrix utility functions. Many related to/from scipy.sparse funcs."""
 
-
-import numbers
-
 from scipy.sparse import coo_matrix, issparse, bmat, eye, dok_matrix, vstack, csr_matrix  # pylint: disable=unused-import
 import numpy as np
+
+# used as exports
+assert bmat
+assert eye
+assert dok_matrix
+assert vstack
+assert csr_matrix
 
 
 def block_diag(mats, format='coo', dtype=None):  # pylint: disable=redefined-builtin
@@ -35,7 +39,7 @@ def block_diag(mats, format='coo', dtype=None):  # pylint: disable=redefined-bui
     data = []
     r_idx = 0
     c_idx = 0
-    for i_mat, mat in enumerate(mats):
+    for _, mat in enumerate(mats):
         if issparse(mat):
             mat = mat.tocoo()
         # if isinstance(mat, (list, numbers.Number)):

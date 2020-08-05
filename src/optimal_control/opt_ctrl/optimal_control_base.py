@@ -44,7 +44,8 @@ class OptimalControlBase(object):
         Keyword arguments to be passed to the `setup` function of the solver.
 
     """
-    def __init__(self, dynamics, constraints, cost, solver, **kwargs):
+
+    def __init__(self, dynamics, constraints, cost, solver, **kwargs): # noqa: D107
         self.dynamics = dynamics
         self.constraints = constraints
         self.cost = cost

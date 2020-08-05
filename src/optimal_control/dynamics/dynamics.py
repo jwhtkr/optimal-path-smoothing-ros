@@ -31,7 +31,8 @@ class Dynamics(object):  # pylint: disable=too-few-public-methods
         A dictionary of system parameters.
 
     """
-    def __init__(self, n_state, n_ctrl, n_output, parameters):
+
+    def __init__(self, n_state, n_ctrl, n_output, parameters): # noqa: D107
         self.n_state = n_state
         self.n_ctrl = n_ctrl
         self.n_output = n_output
@@ -187,6 +188,7 @@ class DiscreteDynamics(Dynamics):  # pylint: disable=too-few-public-methods
         t_next = t_curr + time_step.
 
     """
+
     def output(self, k, curr_state, curr_ctrl):
         """
         Calculate the output of the system at a point as an numpy array.

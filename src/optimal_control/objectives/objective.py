@@ -13,7 +13,6 @@ class Objective(object):
     one for the sake of being explicit.
 
     """
-    pass
 
 
 class ContinuousObjective(Objective):

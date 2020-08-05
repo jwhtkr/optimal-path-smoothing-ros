@@ -15,7 +15,8 @@ class Solver(object):
         The optimization solver for use in solving the optimal control problem.
 
     """
-    def __init__(self):
+
+    def __init__(self): # noqa: D107
         self.solver = None
 
     def setup(self, objective, constraints, **kwargs):

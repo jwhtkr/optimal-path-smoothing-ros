@@ -5,8 +5,8 @@ import os.path
 
 import scipy.io
 import numpy as np
+import matplotlib.pyplot as plt
 from math import floor, ceil
-# import matplotlib.pyplot as plt
 
 import path_smoothing.smooth_path as smooth
 import optimal_control.objectives.quadratic_cost as quad_cost
@@ -27,13 +27,14 @@ def _path_from_mat(path_matrix, time_step):
     return path
 
 
-def smooth_unconstrained(desired_path, Q, R, S, time_step):
+def smooth_unconstrained(desired_path, q_mat, r_mat, s_mat, time_step):
+    """Smooth unconstrained."""
     initial_state = desired_path[:, :, 0]
     n_dim, n_int, n_step = desired_path.shape
 
     path = _path_from_mat(desired_path.reshape(-1, n_step, order="F"),
                           time_step)
-    cost = quad_cost.ContinuousQuadraticCost(Q, R, S, desired_state=path)
+    cost = quad_cost.ContinuousQuadraticCost(q_mat, r_mat, s_mat, desired_state=path)
 
     const = lin_consts.LinearTimeInstantConstraint(time_step*(n_step-1),
                                                    (np.eye(N=n_dim,
@@ -50,24 +51,26 @@ def smooth_unconstrained(desired_path, Q, R, S, time_step):
 
     return smoother.solve()
 
-def smooth_constrained(desired_path, Q, R, S, A_mat, b_mat, time_step):
+def smooth_constrained(desired_path, q_mat, r_mat, s_mat, a_mat, b_mat, time_step):
+    """Smooth constrined."""
     initial_state = desired_path[:, :, 0]
     n_dim, n_int, n_step = desired_path.shape
 
     path = _path_from_mat(desired_path.reshape(-1, n_step, order="F"),
                           time_step)
-    cost = quad_cost.ContinuousQuadraticCost(Q, R, S, desired_state=path)
+    cost = quad_cost.ContinuousQuadraticCost(q_mat, r_mat, s_mat, desired_state=path)
 
     term_const = lin_consts.LinearTimeInstantConstraint(time_step*(n_step-1),
                                                         (np.eye(N=n_dim*n_int,
                                                                 M=n_dim*n_int),
                                                          np.zeros((n_dim*n_int, n_dim))),
-                                                        desired_path[:, :, -1].reshape(-1, 1, order="F"))
-    A_mat = A_mat.reshape(-1, n_dim*(n_int+1), n_step, order="F")
+                                                        desired_path[:, :, -1]
+                                                            .reshape(-1, 1, order="F"))
+    a_mat = a_mat.reshape(-1, n_dim*(n_int+1), n_step, order="F")
     def ineq_mats(t):
         """Return (A, B) of the constraint at time `t`."""
         ind = int(t//time_step)
-        return A_mat[:, :-n_dim, ind], A_mat[:, -n_dim:, ind]
+        return a_mat[:, :-n_dim, ind], a_mat[:, -n_dim:, ind]
     def ineq_bound(t):
         """Return b of the constraint at time `t`."""
         ind = int(t//time_step)
@@ -84,15 +87,16 @@ def smooth_constrained(desired_path, Q, R, S, A_mat, b_mat, time_step):
     return smoother.solve()
 
 def test_unconstrained():
+    """Test unconstrained."""
     f_dir = os.path.dirname(__file__)
     f_name = os.path.join(f_dir, "traj_data.mat")
     tmp = scipy.io.loadmat(f_name)
     xd_mat = tmp["xd_mat"]
-    Q = tmp["Q"]
-    R = tmp["R"]
-    S = tmp["S"]
+    q_mat = tmp["Q"]
+    r_mat = tmp["R"]
+    s_mat = tmp["S"]
     dt = tmp["dt"][0][0]
-    result = smooth_unconstrained(xd_mat[:, :-1, :], Q, R, S, dt)
+    result = smooth_unconstrained(xd_mat[:, :-1, :], q_mat, r_mat, s_mat, dt)
     x_mat = result[0].reshape(xd_mat.shape[0], xd_mat.shape[1]-1,
                               xd_mat.shape[2], order="F")
     plt.plot(xd_mat[0, 0, :], xd_mat[1, 0, :],
@@ -102,17 +106,18 @@ def test_unconstrained():
 
 
 def test_constrained():
+    """Test constrained."""
     f_dir = os.path.dirname(__file__)
     f_name = os.path.join(f_dir, "traj_data.mat")
     tmp = scipy.io.loadmat(f_name)
     xd_mat = tmp["xd_mat"]
-    Q = tmp["Q"]
-    R = tmp["R"]
-    S = tmp["S"]
-    A = tmp["A"]
-    b = tmp["b"]
+    q_mat = tmp["Q"]
+    r_mat = tmp["R"]
+    s_mat = tmp["S"]
+    a_mat = tmp["A"]
+    b_mat = tmp["b"]
     dt = tmp["dt"][0][0]
-    result = smooth_constrained(xd_mat[:, :-1, :], Q, R, S, A, b, dt)
+    result = smooth_constrained(xd_mat[:, :-1, :], q_mat, r_mat, s_mat, a_mat, b_mat, dt)
     # x_mat = result[0].reshape(xd_mat.shape[0], xd_mat.shape[1]-1,
     #                           xd_mat.shape[2], order="F")
     # plt.plot(xd_mat[0, 0, :], xd_mat[1, 0, :],
