@@ -4,7 +4,7 @@ import numpy as np
 
 from optimal_control.dynamics import lti_dynamics
 
-class ContinuousIntegratorDynamics(lti_dynamics.CLTI_Dynamics):
+class ContinuousIntegratorDynamics(lti_dynamics.CltiDynamics):
     """
     Represent continuous integrator dynamics.
 
@@ -15,16 +15,16 @@ class ContinuousIntegratorDynamics(lti_dynamics.CLTI_Dynamics):
 
     Attributes
     ----------
-    A : numpy.ndarray
+    a_mat : numpy.ndarray
         The A matrix from x_dot = Ax + Bu. It is of shape
         (`n_dim`*`n_int`, `n_dim`*`n_int`).
-    B : numpy.ndarray
+    b_mat : numpy.ndarray
         The B matrix from x_dot = Ax + Bu. It is of shape
         (`n_dim`*`n_int`, `n_dim`)
-    C : numpy.ndarray
+    c_mat : numpy.ndarray
         The C matrix from y = Cx + Du. It is of shape
         (`n_dim`, `n_dim`*`n_int`).
-    D : numpy.ndarray
+    d_mat : numpy.ndarray
         The D matrix from y = Cx + Du. It is of shape (`n_dim`, `n_dim`).
     n_dim : int
         The dimensionality of the problem (i.e., 2->plane/2D, 3->3D, etc.).
@@ -38,11 +38,12 @@ class ContinuousIntegratorDynamics(lti_dynamics.CLTI_Dynamics):
     n_int : int
         The number of integrators between the input and the output.
     """
-    def __init__(self, n_dim, n_int):
+
+    def __init__(self, n_dim, n_int): # noqa: D107
         self.n_dim = n_dim
         self.n_int = n_int
-        A, B, C, D = self._integrator_dynamics()
-        super(ContinuousIntegratorDynamics, self).__init__(A, B, C, D)
+        a_mat, b_mat, c_mat, d_mat = self._integrator_dynamics()
+        super(ContinuousIntegratorDynamics, self).__init__(a_mat, b_mat, c_mat, d_mat)
 
     def _integrator_dynamics(self):
         """
@@ -53,23 +54,23 @@ class ContinuousIntegratorDynamics(lti_dynamics.CLTI_Dynamics):
 
         Returns
         -------
-        A : numpy.ndarray
+        a_mat : numpy.ndarray
             The A matrix for a chain of integrators.
-        B : numpy.ndarray
+        b_mat : numpy.ndarray
             The B matrix for a chain of integrators.
-        C : numpy.ndarray
+        c_mat : numpy.ndarray
             The C matrix for a chain of integrators.
-        D : numpy.ndarray
+        d_mat : numpy.ndarray
             The D matrix for a chain of integrators.
         """
-        A = np.eye(self.n_dim*self.n_int, k=self.n_dim)
-        B = np.eye(self.n_dim*self.n_int,
+        a_mat = np.eye(self.n_dim*self.n_int, k=self.n_dim)
+        b_mat = np.eye(self.n_dim*self.n_int,
                    M=self.n_dim,
                    k=-self.n_dim*(self.n_int-1))
-        C = np.eye(self.n_dim, M=self.n_dim*self.n_int)
-        D = np.zeros((self.n_dim, self.n_dim))
+        c_mat = np.eye(self.n_dim, M=self.n_dim*self.n_int)
+        d_mat = np.zeros((self.n_dim, self.n_dim))
 
-        return A, B, C, D
+        return a_mat, b_mat, c_mat, d_mat
 
     def discretize(self, time_step, method="exact"):
         """See base class."""

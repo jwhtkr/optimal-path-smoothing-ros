@@ -52,24 +52,24 @@ def _to_p_q(cost):
 
     Returns
     -------
-    P : scipy.sparse.csc_matrix
+    p_mat : scipy.sparse.csc_matrix
         The P matrix of a quadratic cost of form J(y) = y^T P y + q^T y.
-    q : numpy.ndarray
+    q_mat : numpy.ndarray
         The q vector of a quadratic cost of form J(y) = y^T P y + q^T y.
 
     """
-    Q = sparse.coo_matrix(cost.inst_state_cost)
-    R = sparse.coo_matrix(cost.inst_ctrl_cost)
-    S = sparse.coo_matrix(cost.term_state_cost)
-    QS = Q + S
+    q_mat = sparse.coo_matrix(cost.inst_state_cost)
+    r_mat = sparse.coo_matrix(cost.inst_ctrl_cost)
+    s_mat = sparse.coo_matrix(cost.term_state_cost)
+    qs_mat = q_mat + s_mat
     x_d = cost.desired_state(None)
     u_d = cost.desired_ctrl(None)
 
-    P = sparse.bmat([[QS, None], [None, R]])
-    q = np.concatenate([-QS.transpose().dot(x_d),
-                        -R.transpose().dot(u_d)])
+    p_mat = sparse.bmat([[qs_mat, None], [None, r_mat]])
+    q_mat = np.concatenate([-qs_mat.transpose().dot(x_d),
+                        -r_mat.transpose().dot(u_d)])
 
-    return P.tocsc(), q
+    return p_mat.tocsc(), q_mat
 
 
 def _to_a_l_u(constraints):
@@ -88,22 +88,22 @@ def _to_a_l_u(constraints):
 
     Returns
     -------
-    A : scipy.sparse.csc_matrix
+    a_mat : scipy.sparse.csc_matrix
         The A matrix of the linear inequality constraints: l <= Ay <= u.
-    l : numpy.ndarray
+    l_mat : numpy.ndarray
         The l vector of the linear inequality constraints: l <= Ay <= u.
-    u : numpy.ndarray
+    u_mat : numpy.ndarray
         The u vector of the linear inequality constraints: l <= Ay <= u.
 
     """
-    A_eq, B_eq, b_eq = constraints.equality_mat_vec(None)
-    A_ineq, B_ineq, b_ineq = constraints.inequality_mat_vec(None)
+    a_eq, b_eq, _b_eq = constraints.equality_mat_vec(None)
+    a_ineq, b_ineq, _b_ineq = constraints.inequality_mat_vec(None)
 
-    A = sparse.bmat([[A_eq, B_eq], [A_ineq, B_ineq]])
-    l = np.concatenate([b_eq, np.full_like(b_ineq, -np.inf)])
-    u = np.concatenate([b_eq, b_ineq])
+    a_mat = sparse.bmat([[a_eq, b_eq], [a_ineq, b_ineq]])
+    l_mat = np.concatenate([_b_eq, np.full_like(_b_ineq, -np.inf)])
+    u_mat = np.concatenate([_b_eq, _b_ineq])
 
-    return A.tocsc(), l, u
+    return a_mat.tocsc(), l_mat, u_mat
 
 
 class OSQP(solver.Solver):
@@ -145,7 +145,8 @@ class OSQP(solver.Solver):
         time.
 
     """
-    def __init__(self):
+
+    def __init__(self): # noqa: D107
         super(OSQP, self).__init__()
         self.solver = osqp.OSQP()
         self.quadratic = None
@@ -157,7 +158,7 @@ class OSQP(solver.Solver):
 
     def setup(self, objective, constraints, **kwargs):
         """
-        Setup (or update) the optimization problem to solve.
+        Create or update the optimization problem.
 
         The arguments `objective` and `constraints` are used to convert to the
         parameters of the OSQP solver, P, q, A, l, u and setup the internal
@@ -191,22 +192,22 @@ class OSQP(solver.Solver):
             objective = _to_condensed(objective)
 
         # Convert to/extract the elements needed for the OSQP formulation.
-        P, q = _to_p_q(objective)
-        A, l, u = _to_a_l_u(constraints)
+        p_mat, q_mat = _to_p_q(objective)
+        a_mat, l_mat, u_mat = _to_a_l_u(constraints)
 
         if not self.is_setup:
-            self.solver.setup(P, q, A, l, u, **kwargs)
+            self.solver.setup(p_mat, q_mat, a_mat, l_mat, u_mat, **kwargs)
             self.is_setup = True
         else:
             # TODO: Adjust to only update what has changed, not the whole problem
-            self.solver.update(P, q, A, l, u)
+            self.solver.update(p_mat, q_mat, a_mat, l_mat, u_mat)
             self.solver.update_settings(**kwargs)
 
-        self.quadratic = P
-        self.linear = q
-        self.constraint_matrix = A
-        self.lower_bound = l
-        self.upper_bound = u
+        self.quadratic = p_mat
+        self.linear = q_mat
+        self.constraint_matrix = a_mat
+        self.lower_bound = l_mat
+        self.upper_bound = u_mat
 
     def solve(self, **kwargs):
         """

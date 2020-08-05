@@ -8,11 +8,11 @@ from optimal_control.objectives import objective
 
 class Cost(objective.Objective):
     """Represent an objective that is meant to be minimized, i.e., a cost."""
-    pass
 
 
 class ContinuousCost(Cost, objective.ContinuousObjective):  # pylint: disable=abstract-method
     """Represent a continuous cost function for minimization."""
+
     def cost(self, t_initial, t_final, state_func, ctrl_func):
         """
         Calculate the total cost of a state and control trajectory.
@@ -34,6 +34,7 @@ class ContinuousCost(Cost, objective.ContinuousObjective):  # pylint: disable=ab
             The cost of the state and control trajectories over the indicated
             time horizon.
         """
+
         def instantaneous_func(t):
             """Calculate the instantaneous cost at a time instant `t`."""
             self.instantaneous(t, state_func(t), ctrl_func(t))
@@ -48,6 +49,7 @@ class ContinuousCost(Cost, objective.ContinuousObjective):  # pylint: disable=ab
 
 class DiscreteCost(Cost, objective.DiscreteObjective):  # pylint: disable=abstract-method
     """Represent a discrete cost function for minimization."""
+
     def cost(self, k_initial, k_final, state_traj, ctrl_traj):
         """
         Calculate the total cost of a state and control input trajectory.

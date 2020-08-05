@@ -7,7 +7,7 @@ import numpy as np
 from optimal_control.dynamics import dynamics
 
 
-def _infer_n_state(A, B, C):
+def _infer_n_state(a_mat, b_mat, c_mat):
     """
     Infer the number of states from `A`, `B`, or `C`.
 
@@ -18,11 +18,11 @@ def _infer_n_state(A, B, C):
 
     Parameters
     ----------
-    A : numpy.ndarray or None
+    a_mat : numpy.ndarray or None
         The A matrix from which to infer the number of states, `n_state`.
-    B : numpy.ndarray or None
+    b_mat : numpy.ndarray or None
         The B matrix from which to infer the number of states, `n_state`.
-    C : numpy.ndarray or None
+    c_mat : numpy.ndarray or None
         The C matrix from which to infer the number of states, `n_state`.
 
     Returns
@@ -30,16 +30,16 @@ def _infer_n_state(A, B, C):
     int
         The number of states of the system.
     """
-    if A is not None:
-        return A.shape[0]
-    if B is not None:
-        return B.shape[0]
-    if C is not None:
-        return C.shape[1]
+    if a_mat is not None:
+        return a_mat.shape[0]
+    if b_mat is not None:
+        return b_mat.shape[0]
+    if c_mat is not None:
+        return c_mat.shape[1]
     raise TypeError("One of A, B, or C must be valid (not None/empty/etc.).")
 
 
-def _infer_n_ctrl(B, D):
+def _infer_n_ctrl(b_mat, d_mat):
     """
     Infer the number of control inputs from `B` or `D`.
 
@@ -50,9 +50,9 @@ def _infer_n_ctrl(B, D):
 
     Parameters
     ----------
-    B : numpy.ndarray or None
+    b_mat : numpy.ndarray or None
         The B matrix from which to infer the number of control inputs, `n_ctrl`.
-    D : numpy.ndarray or None
+    d_mat : numpy.ndarray or None
         The D matrix from which to infer the number of control inputs `n_ctrl`.
 
     Returns
@@ -60,14 +60,14 @@ def _infer_n_ctrl(B, D):
     int
         The number of states of the system.
     """
-    if B is not None:
-        return B.shape[1]
-    if D is not None:
-        return D.shape[1]
+    if b_mat is not None:
+        return b_mat.shape[1]
+    if d_mat is not None:
+        return d_mat.shape[1]
     raise TypeError("One of A, B, or C must be valid (not None/empty/etc.).")
 
 
-def _infer_n_output(C, D):
+def _infer_n_output(c_mat, d_mat):
     """
     Infer the number of states from `A`, `B`, or `C`.
 
@@ -78,9 +78,9 @@ def _infer_n_output(C, D):
 
     Parameters
     ----------
-    C : numpy.ndarray or None
+    c_mat : numpy.ndarray or None
         The C matrix from which to infer the number of outputs, `n_output`.
-    D : numpy.ndarray or None
+    d_mat : numpy.ndarray or None
         The D matrix from which to infer the number of outputs, `n_output`.
 
     Returns
@@ -88,26 +88,26 @@ def _infer_n_output(C, D):
     int
         The number of states of the system.
     """
-    if C is not None:
-        return C.shape[0]
-    if D is not None:
-        return D.shape[0]
+    if c_mat is not None:
+        return c_mat.shape[0]
+    if d_mat is not None:
+        return d_mat.shape[0]
     raise TypeError("One of A, B, or C must be valid (not None/empty/etc.).")
 
 
-class CLTI_Dynamics(dynamics.ContinuousDynamics):
+class CltiDynamics(dynamics.ContinuousDynamics):
     """
     Represent Continuous Linear Time-Inveriant (CLTI) dynamics.
 
     Attributes
     ----------
-    A : numpy.ndarray
+    a_mat : numpy.ndarray
         The A matrix from x_dot = Ax + Bu.
-    B : numpy.ndarray
+    b_mat : numpy.ndarray
         The B matrix from x_dot = Ax + Bu.
-    C : numpy.ndarray
+    c_mat : numpy.ndarray
         The C matrix from y = Cx + Du.
-    D : numpy.ndarray
+    d_mat : numpy.ndarray
         The D matrix from y = Cx + Du.
     n_state : int
         The size of the state vector. It is inferred from the shape of A, B, or
@@ -120,49 +120,50 @@ class CLTI_Dynamics(dynamics.ContinuousDynamics):
 
     Parameters
     ----------
-    A : numpy.ndarray
+    a_mat : numpy.ndarray
         The A matrix from x_dot = Ax + Bu.
-    B : numpy.ndarray, optional
+    b_mat : numpy.ndarray, optional
         The B matrix from x_dot = Ax + Bu. If omitted, a zero matrix is assumed.
         Cannot be omitted if D is omitted.
-    C : numpy.ndarray, optional
+    c_mat : numpy.ndarray, optional
         The C matrix from y = Cx + Du. If omitted, a zero matrix is assumed.
         Cannot be omitted if D is omitted.
-    D : numpy.ndarray, optional
+    d_mat : numpy.ndarray, optional
         The D matrix from y = Cx + Du. If omitted, a zero matrix is assumed.
         Cannot be omitted if B or C is omitted.
 
     """
-    def __init__(self, A=None, B=None, C=None, D=None):
-        n_state = _infer_n_state(A, B, C)
-        n_ctrl = _infer_n_ctrl(B, D)
-        n_output = _infer_n_output(C, D)
 
-        if A is None:
-            A = np.zeros((n_state, n_state))
-        if B is None:
-            B = np.zeros((n_state, n_ctrl))
-        if C is None:
-            C = np.zeros((n_output, n_state))
-        if D is None:
-            D = np.zeros((n_output, n_ctrl))
+    def __init__(self, a_mat=None, b_mat=None, c_mat=None, d_mat=None): # noqa: D107
+        n_state = _infer_n_state(a_mat, b_mat, c_mat)
+        n_ctrl = _infer_n_ctrl(b_mat, d_mat)
+        n_output = _infer_n_output(c_mat, d_mat)
 
-        super(CLTI_Dynamics, self).__init__(n_state, n_ctrl, n_output, {})
-        self.A, self.B, self.C, self.D = A, B, C, D
+        if a_mat is None:
+            a_mat = np.zeros((n_state, n_state))
+        if b_mat is None:
+            b_mat = np.zeros((n_state, n_ctrl))
+        if c_mat is None:
+            c_mat = np.zeros((n_output, n_state))
+        if d_mat is None:
+            d_mat = np.zeros((n_output, n_ctrl))
+
+        super(CltiDynamics, self).__init__(n_state, n_ctrl, n_output, {})
+        self.a_mat, self.b_mat, self.c_mat, self.d_mat = a_mat, b_mat, c_mat, d_mat
 
     def state_derivative(self, t, state, ctrl):
         """See base class."""
         del t  # time invariant
-        return np.dot(self.A, state) + np.dot(self.B, ctrl)
+        return np.dot(self.a_mat, state) + np.dot(self.b_mat, ctrl)
 
     def output(self, t, state, ctrl):
         """See base class."""
         del t  # time invariant
-        return np.dot(self.C, state)  + np.dot(self.D, ctrl)
+        return np.dot(self.c_mat, state)  + np.dot(self.d_mat, ctrl)
 
     def linearize(self, state_star, ctrl_star):
         """See base class."""
-        return self.A, self.B, self.C, self.D
+        return self.a_mat, self.b_mat, self.c_mat, self.d_mat
 
     def discretize(self, time_step, method='euler'):
         """See base class."""
@@ -180,29 +181,29 @@ class CLTI_Dynamics(dynamics.ContinuousDynamics):
 
     def _discretize_exact(self, time_step):
         """Discretize the continuous dynamics with exact methods."""
-        tmp = np.concatenate((self.A, self.B), axis=1)
+        tmp = np.concatenate((self.a_mat, self.b_mat), axis=1)
         tmp = np.concatenate((tmp, np.zeros((self.n_ctrl,
                                              self.n_state+self.n_ctrl))))
         tmp = scipy.linalg.expm(tmp*time_step)  # pylint: disable=no-member
-        A_bar = tmp[0:self.n_state, 0:self.n_state]
-        B_bar = tmp[0:self.n_state, self.n_state:self.n_state+self.n_ctrl]
+        a_bar = tmp[0:self.n_state, 0:self.n_state]
+        b_bar = tmp[0:self.n_state, self.n_state:self.n_state+self.n_ctrl]
 
-        return DLTI_Dynamics(time_step, A_bar, B_bar, self.C, self.D)
+        return DltiDynamics(time_step, a_bar, b_bar, self.c_mat, self.d_mat)
 
 
-class DLTI_Dynamics(dynamics.DiscreteDynamics):
+class DltiDynamics(dynamics.DiscreteDynamics):
     """
     Represent Discrete Linear Time-Invariant (DLTI) dynamics.
 
     Attributes
     ----------
-    A : numpy.ndarray
+    a_mat : numpy.ndarray
         The A matrix of the discrete dynamic equation x_{k+1} = Ax_k + Bu_k.
-    B : numpy.ndarray
+    b_mat : numpy.ndarray
         The B matrix of the discrete dynamic equation x_{k+1} = Ax_k + Bu_k.
-    C : numpy.ndarray
+    c_mat : numpy.ndarray
         The C matrix of the discrete dynamic equation y_k = Cx_k + Du_k.
-    D : numpy.ndarray
+    d_mat : numpy.ndarray
         The D matrix of the discrete dynamic equation y_k = Cx_k + Du_k.
     time_step : double
         The time step of the discretization. Corresponds to:
@@ -221,46 +222,48 @@ class DLTI_Dynamics(dynamics.DiscreteDynamics):
     time_step : double
         The time step of the discretization. Corresponds to:
         t_next = t_curr + time_step.
-    A_discrete : numpy.ndarray
+    a_discrete : numpy.ndarray
         The A matrix of the discrete dynamic equation x_{k+1} = Ax_k + Bu_k.
-    B_discrete : numpy.ndarray, optional
+    b_discrete : numpy.ndarray, optional
         The B matrix of the discrete dynamic equation x_{k+1} = Ax_k + Bu_k. If
         omitted it is assumed to be a zero matrix.
-    C_discrete : numpy.ndarray, optional
+    c_discrete : numpy.ndarray, optional
         The C matrix of the discrete dynamic equation y_k = Cx_k + Du_k. If
         omitted it is assumed to be a zero matrix.
-    D_discrete : numpy.ndarray, optional
+    d_discrete : numpy.ndarray, optional
         The D matrix of the discrete dynamic equation y_k = Cx_k + Du_k. If
         omitted it is assumed to be a zero matrix.
 
     """
-    def __init__(self, time_step, A_discrete, B_discrete=None,
-                 C_discrete=None, D_discrete=None):
-        n_state = _infer_n_state(A_discrete, B_discrete, C_discrete)
-        n_ctrl = _infer_n_ctrl(B_discrete, D_discrete)
-        n_output = _infer_n_output(C_discrete, D_discrete)
 
-        super(DLTI_Dynamics, self).__init__(n_state, n_ctrl, n_output, {})
+    def __init__(self, time_step, a_discrete, b_discrete=None,
+                 c_discrete=None, d_discrete=None):
+        """Init."""
+        n_state = _infer_n_state(a_discrete, b_discrete, c_discrete)
+        n_ctrl = _infer_n_ctrl(b_discrete, d_discrete)
+        n_output = _infer_n_output(c_discrete, d_discrete)
 
-        if B_discrete is None:
-            B_discrete = np.zeros((n_state, n_output))
-        if C_discrete is None:
-            C_discrete = np.zeros((n_output, n_state))
-        if D_discrete is None:
-            D_discrete = np.zeros((n_output, n_ctrl))
+        super(DltiDynamics, self).__init__(n_state, n_ctrl, n_output, {})
+
+        if b_discrete is None:
+            b_discrete = np.zeros((n_state, n_output))
+        if c_discrete is None:
+            c_discrete = np.zeros((n_output, n_state))
+        if d_discrete is None:
+            d_discrete = np.zeros((n_output, n_ctrl))
 
         self.time_step = time_step
-        self.A = A_discrete
-        self.B = B_discrete
-        self.C = C_discrete
-        self.D = D_discrete
+        self.a_mat = a_discrete
+        self.b_mat = b_discrete
+        self.c_mat = c_discrete
+        self.d_mat = d_discrete
 
     def next_state(self, k, curr_state, curr_ctrl):
         """See base class."""
         del k  # time invariant
-        return np.dot(self.A, curr_state) + np.dot(self.B, curr_ctrl)
+        return np.dot(self.a_mat, curr_state) + np.dot(self.b_mat, curr_ctrl)
 
     def output(self, k, curr_state, curr_ctrl):
         """See base class."""
         del k  # time invariant
-        return np.dot(self.C, curr_state) + np.dot(self.D, curr_ctrl)
+        return np.dot(self.c_mat, curr_state) + np.dot(self.d_mat, curr_ctrl)
