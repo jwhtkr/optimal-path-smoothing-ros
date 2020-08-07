@@ -12,6 +12,7 @@ import path_smoothing.smooth_path as smooth
 import optimal_control.objectives.quadratic_cost as quad_cost
 import optimal_control.constraints.linear_constraints as lin_consts
 import optimal_control.solvers.osqp_solver as osqp
+import optimal_control.solvers.gurobi_solver as gurobi
 
 
 def _path_from_mat(path_matrix, time_step):
@@ -40,7 +41,8 @@ def smooth_unconstrained(desired_path, Q, R, S, time_step):
 
     constraints = lin_consts.LinearConstraints(eq_constraints=[const])
 
-    solver = osqp.OSQP()
+    # solver = osqp.OSQP()
+    solver = gurobi.Gurobi()
 
     smoother = smooth.SmoothPathLinear(constraints, cost, solver, n_step,
                                        initial_state, time_step=time_step)
@@ -74,8 +76,11 @@ def smooth_constrained(desired_path, Q, R, S, A_mat, b_mat, time_step):
 
     constraints = lin_consts.LinearConstraints(eq_constraints=[term_const],
                                                ineq_constraints=[ineq_const])
+    
+    solver = osqp.OSQP()
+    # solver = gurobi.Gurobi()
 
-    smoother = smooth.SmoothPathLinear(constraints, cost, osqp.OSQP(), n_step,
+    smoother = smooth.SmoothPathLinear(constraints, cost, solver, n_step,
                                        initial_state, time_step=time_step)
 
     return smoother.solve()

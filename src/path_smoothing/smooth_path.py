@@ -260,6 +260,7 @@ class SmoothPathLinear(fixed_time.FixedTime):
 
 
 if __name__ == "__main__":
+    import time as time_module
     # pylint: disable=invalid-name
     pts = [(0., -1., 1.),
            (10., 2., 2.),
@@ -337,8 +338,10 @@ if __name__ == "__main__":
     x_0 = x_desired[:, 0].reshape(2, 4, order="F").copy()
     x_0[1, 0] = 0.5
     x_0[:, 1:] = 0.
+    t_start = time_module.time()
     opt_ctrl = SmoothPathLinear(cnstrnts, cst, slvr, len(time), x_0,
                                 t_final=time[-1])
+    print("Solve Time: {}".format(time_module.time() - t_start))
 
     st, ctl = opt_ctrl.solve()
     st = st.reshape(8, -1, order="F")

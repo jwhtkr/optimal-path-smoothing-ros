@@ -53,7 +53,7 @@ class Constraints(object):
         for const in self.eq_constraints + self.ineq_constraints:
             n_state.append(const.n_state)
             n_ctrl.append(const.n_ctrl)
-        # if all values of n_state and n_ctrl are not consistent its a problem.
+        # if all values of n_state and n_ctrl are not consistent it's a problem.
         if (not n_state.count(n_state[0]) == len(n_state)
                 or not n_ctrl.count(n_ctrl[0]) == len(n_ctrl)):
             raise ValueError("All constraints must be for the same number of "
