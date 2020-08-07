@@ -8,7 +8,6 @@ from optimal_control.objectives import cost
 
 class QuadraticCost(cost.Cost):
     """Represent a general quadratic cost."""
-    pass
 
 
 class ContinuousQuadraticCost(QuadraticCost, cost.ContinuousCost):
@@ -44,8 +43,9 @@ class ContinuousQuadraticCost(QuadraticCost, cost.ContinuousCost):
         `t`.
 
     """
+
     def __init__(self, inst_state_cost, inst_ctrl_cost, term_state_cost,
-                 desired_state=None, desired_ctrl=None):
+                 desired_state=None, desired_ctrl=None): # noqa: D107
         self.inst_state_cost = inst_state_cost
         self.inst_ctrl_cost = inst_ctrl_cost
         self.term_state_cost = term_state_cost
@@ -138,8 +138,9 @@ class DiscreteQuadraticCost(QuadraticCost, cost.DiscreteCost):
         index `k`.
 
     """
+
     def __init__(self, inst_state_cost, inst_ctrl_cost, term_state_cost,
-                 desired_state=None, desired_ctrl=None):
+                 desired_state=None, desired_ctrl=None): # noqa: D107
         self.inst_state_cost = inst_state_cost
         self.inst_ctrl_cost = inst_ctrl_cost
         self.term_state_cost = term_state_cost
@@ -246,6 +247,7 @@ class ContinuousCondensedQuadraticCost(ContinuousQuadraticCost):
         `t`.
 
     """
+
     def instantaneous(self, t, state, ctrl):
         """See base class."""
         desired_state = self.desired_state(t)
@@ -309,6 +311,7 @@ class DiscreteCondensedQuadraticCost(DiscreteQuadraticCost):
         index `k`.
 
     """
+
     def instantaneous(self, k, state, ctrl):
         """See base class."""
         desired_state = self.desired_state(k)

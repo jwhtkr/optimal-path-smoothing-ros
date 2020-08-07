@@ -50,7 +50,8 @@ class Constraint(object):
         The number of control inputs in the constraint.
 
     """
-    def __init__(self, n_state, n_ctrl):
+
+    def __init__(self, n_state, n_ctrl): # noqa: D107
         self.n_state = n_state
         self.n_ctrl = n_ctrl
 
@@ -170,7 +171,8 @@ class EqualityConstraint(Constraint):  # pylint: disable=abstract-method
         abs(h(t, state, ctrl) - eq_val(t)) < eps. Its default value is 1e-6.
 
     """
-    def __init__(self, n_state, n_ctrl, eq_val, eps=1e-6):
+
+    def __init__(self, n_state, n_ctrl, eq_val, eps=1e-6): # noqa: D107
         super(EqualityConstraint, self).__init__(n_state, n_ctrl)
         self.eq_val = eq_val
         self.eps = eps
@@ -219,7 +221,8 @@ class InequalityConstraint(Constraint):  # pylint: disable=abstract-method
         g(t, state, ctrl) <= upper_bound.
 
     """
-    def __init__(self, n_state, n_ctrl, upper_bound):
+
+    def __init__(self, n_state, n_ctrl, upper_bound): # noqa: D107
         super(InequalityConstraint, self).__init__(n_state, n_ctrl)
         self.bound = upper_bound
 

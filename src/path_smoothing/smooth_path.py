@@ -45,8 +45,9 @@ class SmoothPathLinear(fixed_time.FixedTime):
 
 
     """
+
     def __init__(self, constraints, cost, solver, n_step, initial_state,
-                 t_final=0., time_step=0., **kwargs):
+                 t_final=0., time_step=0., **kwargs): # noqa: D107
         self.n_dim, self.n_smooth = initial_state.shape
         self.initial_state = initial_state.reshape(-1, 1, order="F")
         dynamics = self._integrator_dynamics()
@@ -79,6 +80,7 @@ class SmoothPathLinear(fixed_time.FixedTime):
         super(SmoothPathLinear, self).update(**kwargs)
 
     def solve(self, warm_start=None, **kwargs):
+        """See base class."""
         y = super(SmoothPathLinear, self).solve(warm_start, **kwargs)
         return (y[:self.n_dim*self.n_smooth*self.n_step],
                 y[self.n_dim*self.n_smooth*self.n_step:])
@@ -107,13 +109,13 @@ class SmoothPathLinear(fixed_time.FixedTime):
         """
         discrete_dyn = self.dynamics.discretize(self.time_step)
 
-        M = discrete_dyn.n_state*self.n_step
+        m_mat = discrete_dyn.n_state*self.n_step
 
-        A_x = -sparse.eye(m=M, n=discrete_dyn.n_state*self.n_step, format="dok")
-        A_u = sparse.dok_matrix((M, discrete_dyn.n_ctrl*(self.n_step-1)))
-        b = np.zeros((M,))
+        a_x = -sparse.eye(m=m_mat, n=discrete_dyn.n_state*self.n_step, format="dok")
+        a_u = sparse.dok_matrix((m_mat, discrete_dyn.n_ctrl*(self.n_step-1)))
+        b_mat = np.zeros((m_mat,))
 
-        b[:discrete_dyn.n_state] = -self.initial_state.flatten()
+        b_mat[:discrete_dyn.n_state] = -self.initial_state.flatten()
 
         for i in range(1, self.n_step):
             row_begin = i * discrete_dyn.n_state
@@ -123,20 +125,20 @@ class SmoothPathLinear(fixed_time.FixedTime):
             u_col_begin = (i-1) * discrete_dyn.n_ctrl
             u_col_end = u_col_begin + discrete_dyn.n_ctrl
 
-            A_x[row_begin:row_end, x_col_begin:x_col_end] = discrete_dyn.A
-            A_u[row_begin:row_end, u_col_begin:u_col_end] = discrete_dyn.B
+            a_x[row_begin:row_end, x_col_begin:x_col_end] = discrete_dyn.a_mat
+            a_u[row_begin:row_end, u_col_begin:u_col_end] = discrete_dyn.b_mat
 
-        b = b.reshape(-1, 1)
+        b_mat = b_mat.reshape(-1, 1)
 
         def dyn_const(t):
             """Return the matrices of the dynamic constraint."""
             del t
-            return A_x, A_u
+            return a_x, a_u
 
         def dyn_val(t):
             """Return the vector of the dynamic constraint."""
             del t
-            return b
+            return b_mat
 
         return lin_const.LinearEqualityConstraint(dyn_const, dyn_val)
 
@@ -151,20 +153,20 @@ class SmoothPathLinear(fixed_time.FixedTime):
 
         """
         n_state = self.n_dim * self.n_smooth
-        M_x = n_state*self.n_step
+        m_x = n_state*self.n_step
 
-        Q_sparse = sparse.coo_matrix(self.cost.inst_state_cost)
-        Q_sub = sparse.block_diag([Q_sparse for _ in range(self.n_step-1)])
-        Q_list = [[Q_sub, None],
+        q_sparse = sparse.coo_matrix(self.cost.inst_state_cost)
+        q_sub = sparse.block_diag([q_sparse for _ in range(self.n_step-1)])
+        q_list = [[q_sub, None],
                   [None, sparse.coo_matrix((n_state, n_state))]]
-        Q = sparse.bmat(Q_list, format="csc")
+        q_mat = sparse.bmat(q_list, format="csc")
 
-        R = sparse.block_diag([self.cost.inst_ctrl_cost
+        r_mat = sparse.block_diag([self.cost.inst_ctrl_cost
                                for _ in range(self.n_step-1)])
 
-        S_list = [[sparse.coo_matrix((M_x-n_state, M_x-n_state)), None],
+        s_list = [[sparse.coo_matrix((m_x-n_state, m_x-n_state)), None],
                   [None, self.cost.term_state_cost]]
-        S = sparse.bmat(S_list, format="csc")
+        s_mat = sparse.bmat(s_list, format="csc")
 
         x_d = np.concatenate([self.cost.desired_state(i*self.time_step)
                               for i in range(self.n_step)]).reshape(-1, 1)
@@ -181,13 +183,12 @@ class SmoothPathLinear(fixed_time.FixedTime):
             del t
             return u_d
 
-        return quad_cost.ContinuousQuadraticCost(Q, R, S, desired_state,
+        return quad_cost.ContinuousQuadraticCost(q_mat, r_mat, s_mat, desired_state,
                                                  desired_ctrl)
 
     def _aggregate_constraints(self, dyn_constraint):
         """
         Aggregate the constraints to be a function of the entire path.
-
 
         Parameters
         ----------
@@ -211,12 +212,12 @@ class SmoothPathLinear(fixed_time.FixedTime):
         for i in range(self.n_step):
             t = self.time_step*i
 
-            eq = self.constraints.equality_mat_vec(t)
+            eq_mat = self.constraints.equality_mat_vec(t)
             ineq = self.constraints.inequality_mat_vec(t)
 
-            eq_const[0].append(eq[0])
-            eq_const[1].append(eq[1])
-            eq_const[2].append(eq[2])
+            eq_const[0].append(eq_mat[0])
+            eq_const[1].append(eq_mat[1])
+            eq_const[2].append(eq_mat[2])
 
             ineq_const[0].append(ineq[0])
             ineq_const[1].append(ineq[1])
@@ -321,7 +322,8 @@ if __name__ == "__main__":
     #                                                      x_desired[:2, -1].reshape(-1, 1))
     # mid_cnstrnt = lin_const.LinearTimeInstantConstraint(time[len(time)//2],
     #                                                     eq_mats,
-    #                                                     x_desired[:2, len(time)//2].reshape(-1, 1))
+    #                                                     x_desired[:2, len(time)//2]
+    #                                                         .reshape(-1, 1))
     # inst_cnstrnts = [term_cnstrnt, mid_cnstrnt]
 
     inst_cnstrnts = []

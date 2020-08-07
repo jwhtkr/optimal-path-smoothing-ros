@@ -47,9 +47,10 @@ class LinearConstraints(constraints.Constraints):
         Keyword arguments to be passed to the parent class.
 
     """
+
     def __init__(self, eq_mat_list=(), eq_val_list=(), eq_constraints=(),
                  ineq_mat_list=(), ineq_bound_list=(), ineq_constraints=(),
-                 eps=1e-6, **kwargs):
+                 eps=1e-6, **kwargs): #noqa: D107
         if (len(eq_mat_list) != len(eq_val_list)
                 or len(ineq_mat_list) != len(ineq_bound_list)):
             raise TypeError("The lengths of the respective lists of matrices "
@@ -101,29 +102,29 @@ class LinearConstraints(constraints.Constraints):
             The b vector of the stacked Ax + Bu = b constraint.
 
         """
-        eq_mats_A = []
-        eq_mats_B = []
+        eq_mats_a = []
+        eq_mats_b = []
         for const in self.eq_constraints:
-            A, B = const.eq_mats(t)
-            if A is not None and B is not None:
-                eq_mats_A.append(sparse.coo_matrix(A))
-                eq_mats_B.append(sparse.coo_matrix(B))
+            a_mat, b_mat = const.eq_mats(t)
+            if a_mat is not None and b_mat is not None:
+                eq_mats_a.append(sparse.coo_matrix(a_mat))
+                eq_mats_b.append(sparse.coo_matrix(b_mat))
 
         eq_vecs = [const.eq_val(t) for const in self.eq_constraints
                    if const.eq_val(t) is not None]
 
-        if not eq_mats_A or not eq_mats_B or not eq_vecs:
+        if not eq_mats_a or not eq_mats_b or not eq_vecs:
             return (sparse.coo_matrix((0, self.n_state)),
                     sparse.coo_matrix((0, self.n_ctrl)),
                     np.zeros((0, 1)))
 
-        eq_mat_A = sparse.vstack(eq_mats_A)
-        eq_mat_B = sparse.vstack(eq_mats_B)
+        eq_mat_a = sparse.vstack(eq_mats_a)
+        eq_mat_b = sparse.vstack(eq_mats_b)
         eq_vec = np.concatenate(eq_vecs)
 
         if as_sparse:
-            return eq_mat_A, eq_mat_B, eq_vec
-        return eq_mat_A.toarray(), eq_mat_B.toarray(), eq_vec
+            return eq_mat_a, eq_mat_b, eq_vec
+        return eq_mat_a.toarray(), eq_mat_b.toarray(), eq_vec
 
     def inequality_mat_vec(self, t, as_sparse=True):
         """
@@ -147,27 +148,27 @@ class LinearConstraints(constraints.Constraints):
             The b vector of the stacked Ax + Bu <= b constraint.
 
         """
-        ineq_mats_A = []
-        ineq_mats_B = []
+        ineq_mats_a = []
+        ineq_mats_b = []
         for const in self.ineq_constraints:
-            A, B = const.ineq_mats(t)
-            ineq_mats_A.append(sparse.coo_matrix(A))
-            ineq_mats_B.append(sparse.coo_matrix(B))
+            a_mat, b_mat = const.ineq_mats(t)
+            ineq_mats_a.append(sparse.coo_matrix(a_mat))
+            ineq_mats_b.append(sparse.coo_matrix(b_mat))
 
         ineq_vecs = [const.bound(t) for const in self.ineq_constraints]
 
-        if not ineq_mats_A or not ineq_mats_B or not ineq_vecs:
+        if not ineq_mats_a or not ineq_mats_b or not ineq_vecs:
             return (sparse.coo_matrix((0, self.n_state)),
                     sparse.coo_matrix((0, self.n_ctrl)),
                     np.zeros((0, 1)))
 
-        ineq_mat_A = sparse.vstack(ineq_mats_A)
-        ineq_mat_B = sparse.vstack(ineq_mats_B)
+        ineq_mat_a = sparse.vstack(ineq_mats_a)
+        ineq_mat_b = sparse.vstack(ineq_mats_b)
 
         ineq_vec = np.concatenate(ineq_vecs)
         if as_sparse:
-            return ineq_mat_A, ineq_mat_B, ineq_vec
-        return ineq_mat_A.toarray(), ineq_mat_B.toarray(), ineq_vec
+            return ineq_mat_a, ineq_mat_b, ineq_vec
+        return ineq_mat_a.toarray(), ineq_mat_b.toarray(), ineq_vec
 
 
 class LinearEqualityConstraint(constraint.EqualityConstraint):
@@ -197,17 +198,19 @@ class LinearEqualityConstraint(constraint.EqualityConstraint):
         The tolerance of the equality. The default value is 1e-6
 
     """
-    def __init__(self, eq_mats, eq_val, eps=1e-6):
-        A, B = eq_mats(0)
-        n_state = A.shape[1]
-        n_ctrl = B.shape[1]
+
+    def __init__(self, eq_mats, eq_val, eps=1e-6): # noqa: D107
+        a_mat, b_mat = eq_mats(0)
+        n_state = a_mat.shape[1]
+        n_ctrl = b_mat.shape[1]
         super(LinearEqualityConstraint, self).__init__(n_state, n_ctrl, eq_val,
                                                        eps)
         self.eq_mats = eq_mats
 
     def constraint(self, t, state, ctrl):
-        A, B = self.eq_mats(t)
-        return np.dot(A, state) + np.dot(B, ctrl)
+        """See base class."""
+        a_mat, b_mat = self.eq_mats(t)
+        return np.dot(a_mat, state) + np.dot(b_mat, ctrl)
 
 
 class LinearInequalityConstraint(constraint.InequalityConstraint):
@@ -235,17 +238,19 @@ class LinearInequalityConstraint(constraint.InequalityConstraint):
         A function of time that returns the b vector of Ax + Bu <= b.
 
     """
-    def __init__(self, ineq_mats, bound):
-        A, B = ineq_mats(0)
-        n_state = A.shape[1]
-        n_ctrl = B.shape[1]
+
+    def __init__(self, ineq_mats, bound): # noqa: D107
+        a_mat, b_mat = ineq_mats(0)
+        n_state = a_mat.shape[1]
+        n_ctrl = b_mat.shape[1]
         super(LinearInequalityConstraint, self).__init__(n_state, n_ctrl,
                                                          upper_bound=bound)
         self.ineq_mats = ineq_mats
 
     def constraint(self, t, state, ctrl):
-        A, B = self.ineq_mats(t)
-        return np.dot(A, state) + np.dot(B, ctrl)
+        """See base class."""
+        a_mat, b_mat = self.ineq_mats(t)
+        return np.dot(a_mat, state) + np.dot(b_mat, ctrl)
 
 
 class LinearTimeInstantConstraint(LinearEqualityConstraint):
@@ -279,7 +284,8 @@ class LinearTimeInstantConstraint(LinearEqualityConstraint):
     eps : double, optional
         The tolerance of the equality. The default value is 1e-6.
     """
-    def __init__(self, t_inst, eq_mats_inst, eq_val_inst, eps=1e-6):
+
+    def __init__(self, t_inst, eq_mats_inst, eq_val_inst, eps=1e-6): # noqa: D107
         zero_mats = (np.empty((0, eq_mats_inst[0].shape[1])),
                      np.empty((0, eq_mats_inst[1].shape[1])))
         def eq_mats(t):

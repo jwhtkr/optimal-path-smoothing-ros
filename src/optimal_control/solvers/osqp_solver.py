@@ -40,7 +40,8 @@ class OSQP(solver.Solver):
         Indicates if setup has been called or not.
 
     """
-    def __init__(self):
+
+    def __init__(self): # noqa: D107
         super(OSQP, self).__init__()
         self.solver = osqp.OSQP()
         self.quadratic = None
@@ -52,7 +53,7 @@ class OSQP(solver.Solver):
 
     def setup(self, objective, constraints, **kwargs):
         """
-        Setup (or update) the optimization problem to solve.
+        Create or update the optimization problem.
 
         The arguments `objective` and `constraints` are used to convert to the
         parameters of the OSQP solver, P, q, A, l, u and setup the internal
@@ -86,22 +87,22 @@ class OSQP(solver.Solver):
             objective = solver_utils.to_condensed(objective)
 
         # Convert to/extract the elements needed for the OSQP formulation.
-        P, q = solver_utils.to_p_q(objective)
-        A, l, u = solver_utils.to_a_l_u(constraints)
+        p_mat, q_mat = solver_utils.to_p_q(objective)
+        a_mat, l_mat, u_mat = solver_utils.to_a_l_u(constraints)
 
         if not self.is_setup:
-            self.solver.setup(P, q, A, l, u, **kwargs)
+            self.solver.setup(p_mat, q_mat, a_mat, l_mat, u_mat, **kwargs)
             self.is_setup = True
         else:
             # TODO: Adjust to only update what has changed, not the whole problem
-            self.solver.update(P, q, A, l, u)
+            self.solver.update(p_mat, q_mat, a_mat, l_mat, u_mat)
             self.solver.update_settings(**kwargs)
 
-        self.quadratic = P
-        self.linear = q
-        self.constraint_matrix = A
-        self.lower_bound = l
-        self.upper_bound = u
+        self.quadratic = p_mat
+        self.linear = q_mat
+        self.constraint_matrix = a_mat
+        self.lower_bound = l_mat
+        self.upper_bound = u_mat
 
     def solve(self, **kwargs):
         """
@@ -127,3 +128,5 @@ class OSQP(solver.Solver):
             self.solver.warm_start(x=warm_start)
         results = self.solver.solve()
         return results.x
+P, q = solver_utils.to_p_q(objective)
+        A, l, u = solver_utils.to_a_l_u(constraints)

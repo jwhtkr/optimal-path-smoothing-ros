@@ -1,0 +1,62 @@
+#!/usr/bin/env python
+"""ROS node providing path smoothing service."""
+
+from __future__ import print_function
+
+from path_smoothing.srv import SmoothPath, SmoothPathResponse
+# pylint: disable=import-error, no-name-in-module
+from path_smoothing.smooth_traj_opt import smooth_constrained
+from tools.multi_array import multi_array_to_array
+# pylint: enable=import-error, no-name-in-module
+import rospy
+
+def parse_request(req):
+    """
+    Parse a given ROS request.
+
+    Parameters
+    ----------
+    req : SmoothPath
+        Request to parse.
+
+    Returns
+    -------
+    (desired_path, q_mat, r_mat, s_mat, a_mat, b_mat, time_step) : (numpy.array, ..., float)
+        Parsed request data.
+    """
+    desired_path = multi_array_to_array(req.desired_path)
+    q_mat = multi_array_to_array(req.Q)
+    r_mat = multi_array_to_array(req.R)
+    s_mat = multi_array_to_array(req.S)
+    a_mat = multi_array_to_array(req.A)
+    b_mat = multi_array_to_array(req.b)
+    time_step = req.time_step
+    return (desired_path, q_mat, r_mat, s_mat, a_mat, b_mat, time_step)
+
+def handle_path_smoothing(req):
+    """
+    Handle a ROS path smoothing request.
+
+    Parameters
+    ----------
+    req : SmoothPath
+        Request to handle.
+
+    Returns
+    -------
+    path : SmoothPathResponse
+        Smoothed path.
+    """
+    (desired_path, q_mat, r_mat, s_mat, a_mat, b_mat, time_step) = parse_request(req)
+    smoothed = smooth_constrained(desired_path, q_mat, r_mat, s_mat, a_mat, b_mat, time_step)
+    path = SmoothPathResponse(smoothed_path=smoothed[0], smoothed_path_snaps=smoothed[1])
+    return path
+
+def path_smoothing_server():
+    """ROS node providing smooth_path service."""
+    rospy.init_node('path_smoothing')
+    rospy.Service('smooth_path', SmoothPath, handle_path_smoothing)
+    rospy.spin()
+
+if __name__ == "__main__":
+    path_smoothing_server()

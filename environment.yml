@@ -1,4 +1,4 @@
-name: path-smoothing
+name: path_smoothing
 channels:
   - gurobi
   - conda-forge

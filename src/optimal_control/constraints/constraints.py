@@ -34,8 +34,9 @@ class Constraints(object):
         appended to `eq_constraints` and `ineq_constraints`.
 
     """
+
     def __init__(self, eq_constraints=(), ineq_constraints=(),
-                 constraints=None):
+                 constraints=None): # noqa: D107
         if not eq_constraints and not ineq_constraints and not constraints:
             raise ValueError("At least one of `eq_constraints`, "
                              "`ineq_constraints`, or `constraints` must be "
@@ -92,7 +93,7 @@ class Constraints(object):
 
     def constraints(self, t, state, ctrl):
         """
-        Calculate the values of the constraints
+        Calculate the values of the constraints.
 
         Parameters
         ----------

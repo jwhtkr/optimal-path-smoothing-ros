@@ -1,3 +1,5 @@
+# noqa: D104
+
 # from .constraints.constraints import *
 # from .costs.objective import *
 # from .dynamics.dynamics import *

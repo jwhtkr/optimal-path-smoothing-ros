@@ -39,8 +39,9 @@ class FixedTime(dir_opt_ctrl.DirectOptimalControl):
         Keyword arguments to be passed to the `setup` function of the solver.
 
     """
+
     def __init__(self, dynamics, constraints, cost, solver, n_step,
-                 t_final=0., time_step=0., **kwargs):
+                 t_final=0., time_step=0., **kwargs): # noqa: D107
         self.n_step = n_step
         if t_final <= 0.:
             t_final = time_step*n_step
@@ -57,5 +58,7 @@ class FixedTime(dir_opt_ctrl.DirectOptimalControl):
                                         **kwargs)
 
     def update(self, **kwargs):
+        """See base class."""
+        # pylint: disable=useless-super-delegation
         # TODO: Add/move functionality here that is general enough.
         super(FixedTime, self).update(**kwargs)
