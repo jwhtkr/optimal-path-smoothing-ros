@@ -43,6 +43,9 @@ class Gurobi(solver.Solver):
     def __init__(self):
         super(Gurobi, self).__init__()
         self.model = gp.Model()
+        self.x = None
+        self.u = None
+        self.obj = None
         # self.quadratic = None
         # self.linear = None
         # self.constraint_matrix = None
@@ -96,13 +99,29 @@ class Gurobi(solver.Solver):
 
 
         if not self.is_setup:
-            x = self.model.addMVar(shape=int(constraints.n_state),
+            self.x = self.model.addMVar(shape=int(constraints.n_state),
                                    vtype=gp.GRB.CONTINUOUS,
+                                   lb=-np.inf,
                                    name="x")
-            u = self.model.addMVar(shape=int(constraints.n_ctrl),
+            self.u = self.model.addMVar(shape=int(constraints.n_ctrl),
                                    vtype=gp.GRB.CONTINUOUS,
+                                   lb=-np.inf,
                                    name="u")
             
+            self.obj = objective.instantaneous(None, self.x, self.u) 
+            self.obj += objective.terminal(None, self.x, self.u)
+            if isinstance(objective, quadratic_cost.cost.Cost):
+                self.model.setObjective(self.obj, gp.GRB.MINIMIZE)
+            else:
+                self.model.setObjective(self.obj, gp.GRB.MAXIMIZE)
+            
+            Aeq, Beq, beq = constraints.equality_mat_vec(None)
+            Aineq, Bineq, bineq = constraints.inequality_mat_vec(None)
+            self.model.addConstr(Aeq @ self.x + Beq @ self.u == beq.flatten(), 
+                                 name="eq_constr")
+            self.model.addConstr(Aineq @ self.x + Bineq @ self.u <= bineq.flatten(),
+                                 name="ineq_constr")
+                
             self.is_setup = True
         else:
             # TODO: Adjust to only update what has changed, not the whole problem
@@ -139,8 +158,17 @@ class Gurobi(solver.Solver):
         """
         warm_start = kwargs.pop("warm_start")
         if kwargs:
-            self.solver.update_settings(**kwargs)
+            for k, v in kwargs.items():
+                self.model.setParam(k, v)
         if warm_start:
-            self.solver.warm_start(x=warm_start)
-        results = self.solver.solve()
-        return results.x
+            self._warm_start(warm_start)
+        self.model.optimize()
+        if self.model.getAttr("status") == gp.GRB.OPTIMAL:
+            return np.concatenate([self.x.x, self.u.x])
+        else:
+            return None
+
+    def _warm_start(self, warm_start_vec):
+        """Warm start the optimization model."""
+        print("Warm start is currently not available. Solving without warm "
+              + "start.")

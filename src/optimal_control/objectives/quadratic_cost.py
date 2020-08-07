@@ -183,10 +183,20 @@ class DiscreteQuadraticCost(QuadraticCost, cost.DiscreteCost):
         state_err = state - desired_state
         ctrl_err = ctrl - desired_ctrl
 
-        state_cost = np.dot(state_err.T,
-                            np.dot(self.inst_state_cost, state_err))
-        ctrl_cost = np.dot(ctrl_err.T, np.dot(self.inst_ctrl_cost, ctrl_err))
-
+        # state_cost = np.dot(state_err.T,
+        #                     np.dot(self.inst_state_cost, state_err))
+        # ctrl_cost = np.dot(ctrl_err.T, np.dot(self.inst_ctrl_cost, ctrl_err))
+        
+        if isinstance(state_err, np.ndarray):
+            state_cost = state_err.T @ self.inst_state_cost @ state_err
+        else:
+            state_cost = state_err @ self.inst_state_cost @ state_err
+            
+        if isinstance(ctrl_err, np.ndarray):
+            ctrl_cost = ctrl_err.T @ self.inst_ctrl_cost @ ctrl_err
+        else:
+            ctrl_cost = ctrl_err @ self.inst_ctrl_cost @ ctrl_err
+        
         return state_cost + ctrl_cost
 
     def terminal(self, k, state, ctrl):
@@ -194,7 +204,10 @@ class DiscreteQuadraticCost(QuadraticCost, cost.DiscreteCost):
         desired_state = self.desired_state(k)
         state_err = state - desired_state
 
-        return np.dot(state_err.T, np.dot(self.term_state_cost, state_err))
+        # return np.dot(state_err.T, np.dot(self.term_state_cost, state_err))
+        if isinstance(state_err, np.ndarray):
+            return state_err.T @ self.term_state_cost @ state_err
+        return state_err @ self.term_state_cost @ state_err
 
 
 class ContinuousCondensedQuadraticCost(ContinuousQuadraticCost):
@@ -301,13 +314,26 @@ class DiscreteCondensedQuadraticCost(DiscreteQuadraticCost):
         desired_state = self.desired_state(k)
         desired_ctrl = self.desired_ctrl(k)
 
-        state_cost_quad = np.dot(state.T, np.dot(self.inst_state_cost, state))
-        state_cost_lin = -2*np.dot(desired_state.T,
-                                   np.dot(self.inst_state_cost, state))
+        if isinstance(state, np.ndarray):
+            # state_cost_quad = np.dot(state.T, np.dot(self.inst_state_cost, state))
+        
+            state_cost_quad = state.T @ self.inst_state_cost @ state
+        else:
+            state_cost_quad = state @ self.inst_state_cost @ state
+            
+        # state_cost_lin = -2*np.dot(desired_state.T,
+        #                            np.dot(self.inst_state_cost, state))   
+        state_cost_lin = -2 * desired_state.T @ self.inst_state_cost @ state
 
-        ctrl_cost_quad = np.dot(ctrl.T, np.dot(self.inst_ctrl_cost, ctrl))
-        ctrl_cost_lin = -2*np.dot(desired_ctrl.T,
-                                  np.dot(self.inst_ctrl_cost, ctrl))
+        if isinstance(ctrl, np.ndarray):
+            # ctrl_cost_quad = np.dot(ctrl.T, np.dot(self.inst_ctrl_cost, ctrl))
+            ctrl_cost_quad = ctrl.T @ self.inst_ctrl_cost @ ctrl
+        else:
+            ctrl_cost_quad = ctrl @ self.inst_ctrl_cost @ ctrl
+            
+        # ctrl_cost_lin = -2*np.dot(desired_ctrl.T,
+        #                           np.dot(self.inst_ctrl_cost, ctrl))
+        ctrl_cost_lin = -2 * desired_ctrl.T @ self.inst_ctrl_cost @ ctrl
 
         return state_cost_quad + state_cost_lin + ctrl_cost_quad + ctrl_cost_lin
 
@@ -315,7 +341,12 @@ class DiscreteCondensedQuadraticCost(DiscreteQuadraticCost):
         """See base class."""
         desired_state = self.desired_state(k)
 
-        quad = np.dot(state.T, np.dot(self.term_state_cost, state))
-        lin = -2*np.dot(desired_state.T, np.dot(self.term_state_cost, state))
+        if isinstance(state, np.ndarray):
+            # quad = np.dot(state.T, np.dot(self.term_state_cost, state))
+            quad = state.T @ self.term_state_cost @ state
+        else:
+            quad = state @ self.term_state_cost @ state
+        # lin = -2*np.dot(desired_state.T, np.dot(self.term_state_cost, state))
+        lin = -2 * desired_state.T @ self.term_state_cost @ state
 
         return quad + lin
