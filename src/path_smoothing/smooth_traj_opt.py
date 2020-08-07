@@ -12,13 +12,23 @@ from math import floor, ceil
 import path_smoothing.smooth_path as smooth
 import optimal_control.objectives.quadratic_cost as quad_cost
 import optimal_control.constraints.linear_constraints as lin_consts
+
+# pylint: disable=unused-import
 import optimal_control.solvers.osqp_solver as osqp
 import optimal_control.solvers.gurobi_solver as gurobi
+# pylint: enable=unused-import
+
+MAT_FILE_BASE = "traj_data_{}.mat"
+MAT_FILES = [MAT_FILE_BASE.format("box"),
+             MAT_FILE_BASE.format("box_vels"),
+             MAT_FILE_BASE.format("voronoi"),
+             MAT_FILE_BASE.format("voronoi_vels")]
+MAT_FILE = MAT_FILES[3]
 
 
 def _path_from_mat(path_matrix, time_step):
     def path(t):
-        _, n_step = path_matrix.shape
+        _, n_step = path_matrix.shape # bug in pylint with nested functions pylint: disable=unused-variable
         sub_index = t/time_step
         left = int(max(min(floor(sub_index), n_step), 0))
         right = int(max(min(ceil(sub_index), n_step), 0))
@@ -27,7 +37,6 @@ def _path_from_mat(path_matrix, time_step):
         x_next = path_matrix[:, right]
         return alpha*(x_next - x_prev) + x_prev
     return path
-
 
 def smooth_unconstrained(desired_path, q_mat, r_mat, s_mat, time_step):
     """Smooth unconstrained."""
@@ -83,9 +92,9 @@ def smooth_constrained(desired_path, q_mat, r_mat, s_mat, a_mat, b_mat, time_ste
 
     constraints = lin_consts.LinearConstraints(eq_constraints=[term_const],
                                                ineq_constraints=[ineq_const])
-    
-    solver = osqp.OSQP()
-    # solver = gurobi.Gurobi()
+
+    # solver = osqp.OSQP()
+    solver = gurobi.Gurobi()
 
     smoother = smooth.SmoothPathLinear(constraints, cost, solver, n_step,
                                        initial_state, time_step=time_step)
@@ -95,7 +104,7 @@ def smooth_constrained(desired_path, q_mat, r_mat, s_mat, a_mat, b_mat, time_ste
 def test_unconstrained():
     """Test unconstrained."""
     f_dir = os.path.dirname(__file__)
-    f_name = os.path.join(f_dir, "traj_data.mat")
+    f_name = os.path.join(f_dir, MAT_FILE)
     tmp = scipy.io.loadmat(f_name)
     xd_mat = tmp["xd_mat"]
     q_mat = tmp["Q"]
@@ -114,7 +123,7 @@ def test_unconstrained():
 def test_constrained():
     """Test constrained."""
     f_dir = os.path.dirname(__file__)
-    f_name = os.path.join(f_dir, "traj_data.mat")
+    f_name = os.path.join(f_dir, MAT_FILE)
     tmp = scipy.io.loadmat(f_name)
     xd_mat = tmp["xd_mat"]
     q_mat = tmp["Q"]
@@ -124,11 +133,11 @@ def test_constrained():
     b_mat = tmp["b"]
     dt = tmp["dt"][0][0]
     result = smooth_constrained(xd_mat[:, :-1, :], q_mat, r_mat, s_mat, a_mat, b_mat, dt)
-    # x_mat = result[0].reshape(xd_mat.shape[0], xd_mat.shape[1]-1,
-    #                           xd_mat.shape[2], order="F")
-    # plt.plot(xd_mat[0, 0, :], xd_mat[1, 0, :],
-    #          x_mat[0, 0, :], x_mat[1, 0, :])
-    # plt.show()
+    x_mat = result[0].reshape(xd_mat.shape[0], xd_mat.shape[1]-1,
+                              xd_mat.shape[2], order="F")
+    plt.plot(xd_mat[0, 0, :], xd_mat[1, 0, :],
+             x_mat[0, 0, :], x_mat[1, 0, :])
+    plt.show()
     return result
 
 

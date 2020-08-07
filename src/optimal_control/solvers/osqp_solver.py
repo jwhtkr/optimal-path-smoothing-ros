@@ -128,5 +128,3 @@ class OSQP(solver.Solver):
             self.solver.warm_start(x=warm_start)
         results = self.solver.solve()
         return results.x
-P, q = solver_utils.to_p_q(objective)
-        A, l, u = solver_utils.to_a_l_u(constraints)

@@ -48,25 +48,25 @@ def to_p_q(cost):
 
     Returns
     -------
-    P : scipy.sparse.csc_matrix
+    p_mat : scipy.sparse.csc_matrix
         The P matrix of a quadratic cost of form J(y) = y^T P y + 2 q^T y.
-    q : numpy.ndarray
+    q_vec : numpy.ndarray
         The q vector of a quadratic cost of form J(y) = y^T P y + 2 q^T y.
 
     """
-    Q = sparse.coo_matrix(cost.inst_state_cost)
-    R = sparse.coo_matrix(cost.inst_ctrl_cost)
-    S = sparse.coo_matrix(cost.term_state_cost)
-    QS = Q + S
+    q_vec = sparse.coo_matrix(cost.inst_state_cost)
+    r_mat = sparse.coo_matrix(cost.inst_ctrl_cost)
+    s_mat = sparse.coo_matrix(cost.term_state_cost)
+    qs_mat = q_vec + s_mat
     x_d = cost.desired_state(None)
     u_d = cost.desired_ctrl(None)
 
     # P = sparse.bmat([[QS, None], [None, R]])
-    P = sparse.block_diag([QS, R])
-    q = np.concatenate([-QS.transpose().dot(x_d),
-                        -R.transpose().dot(u_d)])
+    p_mat = sparse.block_diag([qs_mat, r_mat])
+    q_vec = np.concatenate([-qs_mat.transpose().dot(x_d),
+                        -r_mat.transpose().dot(u_d)])
 
-    return P.tocsc(), q
+    return p_mat.tocsc(), q_vec
 
 
 def to_a_l_u(constraints):
@@ -85,19 +85,19 @@ def to_a_l_u(constraints):
 
     Returns
     -------
-    A : scipy.sparse.csc_matrix
+    a_mat : scipy.sparse.csc_matrix
         The A matrix of the linear inequality constraints: l <= Ay <= u.
-    l : numpy.ndarray
+    lb_vec : numpy.ndarray
         The l vector of the linear inequality constraints: l <= Ay <= u.
-    u : numpy.ndarray
+    ub_vec : numpy.ndarray
         The u vector of the linear inequality constraints: l <= Ay <= u.
 
     """
-    A_eq, B_eq, b_eq = constraints.equality_mat_vec(None)
-    A_ineq, B_ineq, b_ineq = constraints.inequality_mat_vec(None)
+    a_eq_mat, b_eq_mat, b_eq_vec = constraints.equality_mat_vec(None)
+    a_ineq_vec, b_ineq_mat, b_ineq_vec = constraints.inequality_mat_vec(None)
 
-    A = sparse.bmat([[A_eq, B_eq], [A_ineq, B_ineq]])
-    l = np.concatenate([b_eq, np.full_like(b_ineq, -np.inf)])
-    u = np.concatenate([b_eq, b_ineq])
+    a_mat = sparse.bmat([[a_eq_mat, b_eq_mat], [a_ineq_vec, b_ineq_mat]])
+    lb_vec = np.concatenate([b_eq_vec, np.full_like(b_ineq_vec, -np.inf)])
+    ub_vec = np.concatenate([b_eq_vec, b_ineq_vec])
 
-    return A.tocsc(), l, u
+    return a_mat.tocsc(), lb_vec, ub_vec

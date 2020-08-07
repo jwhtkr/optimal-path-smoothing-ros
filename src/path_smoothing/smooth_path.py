@@ -8,8 +8,11 @@ import optimal_control.opt_ctrl.direct.fixed_time as fixed_time
 import optimal_control.dynamics.integrator_dynamics as int_dyn
 import optimal_control.objectives.quadratic_cost as quad_cost
 import optimal_control.constraints.linear_constraints as lin_const
+
+# pylint: disable=unused-import
 import optimal_control.solvers.osqp_solver as osqp
 import optimal_control.solvers.gurobi_solver as gurobi
+# pylint: enable=unused-import
 
 
 def interpolate(arg1, arg1_prev, arg1_next, arg2_prev, arg2_next):
@@ -343,9 +346,9 @@ if __name__ == "__main__":
     t_start = time_module.time()
     opt_ctrl = SmoothPathLinear(cnstrnts, cst, slvr, len(time), x_0,
                                 t_final=time[-1])
-    print("Solve Time: {}".format(time_module.time() - t_start))
 
     st, ctl = opt_ctrl.solve()
+    print("Solve Time: {}".format(time_module.time() - t_start))
     st = st.reshape(8, -1, order="F")
     ctl = ctl.reshape(2, -1, order="F")
 

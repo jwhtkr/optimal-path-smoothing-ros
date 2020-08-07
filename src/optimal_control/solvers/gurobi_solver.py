@@ -40,11 +40,12 @@ class Gurobi(solver.Solver):
         Indicates if setup has been called or not.
 
     """
-    def __init__(self):
+
+    def __init__(self): # noqa: D107
         super(Gurobi, self).__init__()
         self.model = gp.Model()
-        self.x = None
-        self.u = None
+        self.x_vec = None
+        self.u_vec = None
         self.obj = None
         # self.quadratic = None
         # self.linear = None
@@ -55,7 +56,7 @@ class Gurobi(solver.Solver):
 
     def setup(self, objective, constraints, **kwargs):
         """
-        Setup (or update) the optimization problem to solve.
+        Set up (or update) the optimization problem to solve.
 
         The arguments `objective` and `constraints` are used to convert to the
         objective and constraints of the gurobi solver and setup the internal
@@ -99,29 +100,31 @@ class Gurobi(solver.Solver):
 
 
         if not self.is_setup:
-            self.x = self.model.addMVar(shape=int(constraints.n_state),
+            self.x_vec = self.model.addMVar(shape=int(constraints.n_state),
                                    vtype=gp.GRB.CONTINUOUS,
                                    lb=-np.inf,
                                    name="x")
-            self.u = self.model.addMVar(shape=int(constraints.n_ctrl),
+            self.u_vec = self.model.addMVar(shape=int(constraints.n_ctrl),
                                    vtype=gp.GRB.CONTINUOUS,
                                    lb=-np.inf,
                                    name="u")
-            
-            self.obj = objective.instantaneous(None, self.x, self.u) 
-            self.obj += objective.terminal(None, self.x, self.u)
+
+            self.obj = objective.instantaneous(None, self.x_vec, self.u_vec)
+            self.obj += objective.terminal(None, self.x_vec, self.u_vec)
             if isinstance(objective, quadratic_cost.cost.Cost):
                 self.model.setObjective(self.obj, gp.GRB.MINIMIZE)
             else:
                 self.model.setObjective(self.obj, gp.GRB.MAXIMIZE)
-            
-            Aeq, Beq, beq = constraints.equality_mat_vec(None)
-            Aineq, Bineq, bineq = constraints.inequality_mat_vec(None)
-            self.model.addConstr(Aeq @ self.x + Beq @ self.u == beq.flatten(), 
+
+            a_eq_mat, b_eq_mat, b_eq_vec = constraints.equality_mat_vec(None)
+            a_ineq_mat, b_ineq_mat, b_ineq_vec = constraints.inequality_mat_vec(None)
+            self.model.addConstr(a_eq_mat @ self.x_vec + b_eq_mat @ self.u_vec
+                                    == b_eq_vec.flatten(),
                                  name="eq_constr")
-            self.model.addConstr(Aineq @ self.x + Bineq @ self.u <= bineq.flatten(),
+            self.model.addConstr(a_ineq_mat @ self.x_vec + b_ineq_mat @ self.u_vec
+                                    <= b_ineq_vec.flatten(),
                                  name="ineq_constr")
-                
+
             self.is_setup = True
         else:
             # TODO: Adjust to only update what has changed, not the whole problem
@@ -158,17 +161,18 @@ class Gurobi(solver.Solver):
         """
         warm_start = kwargs.pop("warm_start")
         if kwargs:
-            for k, v in kwargs.items():
-                self.model.setParam(k, v)
+            for key, val in kwargs.items():
+                self.model.setParam(key, val)
         if warm_start:
             self._warm_start(warm_start)
         self.model.optimize()
         if self.model.getAttr("status") == gp.GRB.OPTIMAL:
-            return np.concatenate([self.x.x, self.u.x])
+            return np.concatenate([self.x_vec.x, self.u_vec.x])
         else:
             return None
 
     def _warm_start(self, warm_start_vec):
         """Warm start the optimization model."""
+        del warm_start_vec
         print("Warm start is currently not available. Solving without warm "
               + "start.")
