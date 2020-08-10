@@ -12,6 +12,7 @@ class Polygon:
         b_neg_a = np.concatenate((b_trans, neg_a), axis=1)
         matrix = cdd.Matrix(b_neg_a, number_type='float')
         matrix.rep_type = cdd.RepType.INEQUALITY
+        matrix.canonicalize()
         return cls(matrix)
 
     @classmethod
@@ -20,6 +21,7 @@ class Polygon:
         ones_vertices = np.concatenate((ones, vertices), axis=1)
         matrix = cdd.Matrix(ones_vertices, number_type='float')
         matrix.rep_type = cdd.RepType.GENERATOR
+        matrix.canonicalize()
         return cls(matrix)
 
     def get_b_neg_a(self):
@@ -40,3 +42,27 @@ class Polygon:
             return gen[:,1:]
         else:
             raise ValueError('Polygon contains rays.')
+
+if __name__ == "__main__":
+    import matplotlib.path as mpath
+    import matplotlib.patches as mpatches
+    import matplotlib.pyplot as plt
+    print("demo")
+    poly = Polygon.from_vertices(np.array([[0, 0], [1, 0], [0, 1], [-0.2, 0.5]]))
+    # poly = Polygon.from_a_b(np.array([[0, 0], [1, 0], [0, 1], [-0.2, 0.5]]), np.array([]))
+    vert = poly.get_vertices()
+    avg = np.average(vert, axis=0)
+    def myfn(x):
+        return np.arctan2(x[1] - avg[1], x[0] - avg[0])
+    angles = np.array(map(myfn, vert))
+    order = np.argsort(angles)
+    vert_sorted = vert[order]
+    vert = vert_sorted
+    print("draw")
+    fig, ax = plt.subplots()
+    patch = mpatches.Polygon(vert, True)
+    ax.add_patch(patch)
+    ax.grid()
+    ax.axis('equal')
+    plt.show()
+
