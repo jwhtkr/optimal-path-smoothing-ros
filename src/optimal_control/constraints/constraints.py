@@ -28,10 +28,11 @@ class Constraints(object):
     ineq_constraints : list of InequalityConstraint, optional
         A list of inequality constraints for an optimization problem. If not
         specified, then `eq_constraints` must be specified.
-    constraints : Constraints, optional
+    constraints : Constraints, list of Constraints optional
         Another :obj:`Constraints` object from which the constraints are to be
         inherited. In other words, the constraints from `constraints` will be
-        appended to `eq_constraints` and `ineq_constraints`.
+        appended to `eq_constraints` and `ineq_constraints`. A list of :obj:
+        `Constraints` objects can be passed as well.
 
     """
 
@@ -46,8 +47,13 @@ class Constraints(object):
         self.ineq_constraints = list(ineq_constraints)
 
         if constraints is not None:
-            self.eq_constraints.extend(constraints.eq_constraints)
-            self.ineq_constraints.extend(constraints.ineq_constraints)
+            if len(constraints) < 2:
+                self.eq_constraints.extend(constraints.eq_constraints)
+                self.ineq_constraints.extend(constraints.ineq_constraints)
+            else:
+                for constrs in constraints:
+                    self.eq_constraints.extend(constrs.eq_constraints)
+                    self.ineq_constraints.extend(constrs.ineq_constraints)
 
         n_state = []
         n_ctrl = []

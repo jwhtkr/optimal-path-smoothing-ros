@@ -19,11 +19,12 @@ import optimal_control.solvers.gurobi_solver as gurobi
 # pylint: enable=unused-import
 
 MAT_FILE_BASE = "traj_data_{}.mat"
-MAT_FILES = [MAT_FILE_BASE.format("box"),
-             MAT_FILE_BASE.format("box_vels"),
-             MAT_FILE_BASE.format("voronoi"),
-             MAT_FILE_BASE.format("voronoi_vels")]
-MAT_FILE = MAT_FILES[3]
+MAT_FILES = {"box": MAT_FILE_BASE.format("box"),
+             "box_vels": MAT_FILE_BASE.format("box_vels"),
+             "voronoi": MAT_FILE_BASE.format("voronoi"),
+             "voronoi_vels": MAT_FILE_BASE.format("voronoi_vels"),
+             "original": MAT_FILE_BASE.format("original")}
+MAT_FILE = MAT_FILES["original"]
 
 
 def _path_from_mat(path_matrix, time_step):
