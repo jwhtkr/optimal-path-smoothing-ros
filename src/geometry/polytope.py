@@ -4,7 +4,9 @@ import cdd
 import numpy as np
 
 class Polytope:
-    def __init__(self, matrix):
+    """Represents a 2D polytope."""
+
+    def __init__(self, matrix): # noqa: D107
         self.polyhedron = cdd.Polyhedron(matrix)
 
     @classmethod
@@ -52,7 +54,7 @@ class Polytope:
         matrix.rep_type = cdd.RepType.GENERATOR
         matrix.canonicalize()
         return cls(matrix)
-        
+
     def get_a_b(self):
         """
         Return the polytope's A and b matrices.
@@ -62,9 +64,9 @@ class Polytope:
         (a_mat, b_mat) : (numpy.array, numpy.array)
             A and b matrices.
         """
-        b_neg_a = np.array(self.get_b_neg_a())
-        a_mat = np.negative(b_neg_a[:,1:])
-        b_mat = b_neg_a[:,0]
+        b_neg_a = np.array(self.polyhedron.get_inequalities())
+        a_mat = np.negative(b_neg_a[:, 1:])
+        b_mat = b_neg_a[:, 0]
         return (a_mat, b_mat)
 
     def get_vertices_rays(self):
@@ -77,13 +79,13 @@ class Polytope:
             Vertices and rays.
         """
         gen = np.array(self.polyhedron.get_generators())
-        rays = gen[gen[:,0] == 0]
-        verts = gen[gen[:,0] == 1]
+        rays = gen[gen[:, 0] == 0]
+        verts = gen[gen[:, 0] == 1]
         def to_unit_vector(x):
             mag = np.sqrt(x[0]*x[0] + x[1]*x[1])
             return x/mag
-        rays = np.array(map(to_unit_vector, rays[:,1:]))
-        verts = verts[:,1:]
+        rays = np.array(map(to_unit_vector, rays[:, 1:]))
+        verts = verts[:, 1:]
         return (verts, rays)
 
     def as_finite_polygon(self, ray_length=10):
@@ -112,16 +114,16 @@ class Polytope:
         # add vertices for rays
         mag = ray_length
         if rays.shape[0] == 2:
-            def unit_vector(v):
-                mag = np.sqrt(v[0]*v[0] + v[1]*v[1])
-                return v/mag
-            def bisector(a, b):
-                a_hat = unit_vector(a)
-                b_hat = unit_vector(b)
-                c = a_hat + b_hat
-                return unit_vector(c)
-            def angle_vector(v):
-                return np.arctan2(v[1], v[0]) + np.pi
+            def unit_vector(vec):
+                mag = np.sqrt(vec[0]*vec[0] + vec[1]*vec[1])
+                return vec/mag
+            def bisector(a_vec, b_vec):
+                a_hat = unit_vector(a_vec)
+                b_hat = unit_vector(b_vec)
+                c_vec = a_hat + b_hat
+                return unit_vector(c_vec)
+            def angle_vector(vec):
+                return np.arctan2(vec[1], vec[0]) + np.pi
             # The following sorting and check attempt to place the rays on the
             # correct ends of the polygon. It may not correctly place the rays
             # for all polytopes.
@@ -131,17 +133,20 @@ class Polytope:
             test_point = verts_avg + bisec * mag * 100
             # sort the vertices by angle to the test point
             # sort will be clockwise with index 0 on the clockwise side of the bisector
-            def angle_of_vertex(vert):
-                return -((angle_vector(vert - test_point) - angle_vector(bisec) + np.pi * 2) % (np.pi * 2))
-            angles = np.array(map(angle_of_vertex, verts))
+            def angle_at_test_point(vert):
+                return -(
+                    (angle_vector(vert - test_point) - angle_vector(bisec) + np.pi * 2)
+                    % (np.pi * 2)
+                )
+            angles = np.array(map(angle_at_test_point, verts))
             order = np.argsort(angles)
             verts_sorted = verts[order]
             verts = verts_sorted
             # sort the rays by the sign of the angle to the bisector
-            # sort will be clockwise from bisector 
+            # sort will be clockwise from bisector
             order = np.array([
                 (angle_vector(rays[1]) - angle_vector(bisec) + np.pi * 2) % (np.pi * 2),
-                (angle_vector(rays[0]) - angle_vector(bisec) + np.pi * 2) % (np.pi * 2),
+                (angle_vector(rays[0]) - angle_vector(bisec) + np.pi * 2) % (np.pi * 2)
             ])
             rays = rays[np.argsort(order)]
             # add vertices to list for rays
@@ -164,89 +169,3 @@ class Polytope:
         else:
             raise ValueError('Polytope contains more than two rays.')
         return verts
-
-
-if __name__ == "__main__":
-    import matplotlib.path as mpath
-    import matplotlib.patches as mpatches
-    import matplotlib.pyplot as plt
-    print("demo")
-    poly = Polytope.from_vertices_rays(np.array([[0, 0], [1, 0], [0, 1], [1, 1]]))
-    # poly = Polytope.from_vertices_rays(
-    #     np.array([[0, 0], [0, 1]]), 
-    #     np.array([[0.2, 1], [1, 0]])
-    # )
-    # poly = Polytope.from_vertices_rays(
-    #     np.array([[0, 0], [0, 1], [1, 4]]), 
-    #     np.array([[1, 1], [1, 0]])
-    # )
-    # poly = Polytope.from_vertices_rays(
-    #     np.array([[-1, 0], [0, -1], [0, 1], [1, 0]])
-    # )
-    # poly = Polytope.from_vertices_rays(
-    #     np.array([[-1, 0], [0, 1], [0, -1]]), 
-    #     np.array([[1, -0.2], [1, 0.7]])
-    # )
-    # poly = Polytope.from_vertices_rays(
-    #     np.array([[-1, 0], [0, 1], [0, -1]]), 
-    #     np.array([[1, -0.2], [-1, -2]])
-    # )
-
-    # poly = Polytope.from_vertices_rays(
-    #     np.array([[-1, 0], [0, 1], [0, -1], [1, 0], [1,1], [-1,1], [1,-1], [-1,-1]]), 
-    #     np.array([[1, -0.2], [-1, -2]])
-    # )
-    # poly = Polytope.from_vertices_rays(
-    #     np.array([[-1, 0], [0, 1], [0, -1], [1, 0], [1,1], [-1,1], [1,-1], [-1,-1]]), 
-    #     np.array([[1, -0.2], [1, 0.7]])
-    # )
-    # poly = Polytope.from_vertices_rays(
-    #     np.array([[-1, 0], [0, 1], [0, -1], [1, 0], [1,1], [-1,1], [1,-1], [-1,-1]]), 
-    #     np.array([[1, -0.2], [1, -0.7]])
-    # )
-    # poly = Polytope.from_vertices_rays(
-    #     np.array([[-1, 0], [0, 1], [0, -1], [1, 0], [1,1], [-1,1], [1,-1], [-1,-1]]), 
-    #     np.array([[0, 1], [-1, 1]])
-    # )
-
-    # poly = Polytope.from_vertices_rays(
-    #     np.array([[-1.5, 0], [0, 1.5], [0, -1.5], [1.5, 0], [1,1], [-1,1], [1,-1], [-1,-1]]), 
-    #     np.array([[-1.03, -2.33], [-0.63,-2.54]])
-    # )
-    # poly = Polytope.from_vertices_rays(
-    #     np.array([[-1.5, 0], [0, 1.5], [0, -1.5], [1.5, 0], [1,1], [-1,1], [1,-1], [-1,-1]]), 
-    #     np.array([[-1.73, 0.53], [-1.45,1.16]])
-    # )
-    # poly = Polytope.from_vertices_rays(
-    #     np.array([[-1.5, 0], [0, 1.5], [0, -1.5], [1.5, 0], [1,1], [-1,1], [1,-1], [-1,-1]]), 
-    #     np.array([[-0.56, 1.37], [0.33,1.65]])
-    # )
-    # poly = Polytope.from_vertices_rays(
-    #     np.array([[-1.5, 0], [0, 1.5], [0, -1.5], [1.5, 0], [1,1], [-1,1], [1,-1], [-1,-1]]), 
-    #     np.array([[2.7,-1.7], [2.06, -2.73]])
-    # )
-    # poly = Polytope.from_vertices_rays(
-    #     np.array([[-1.5, 0], [0, 1.5], [0, -1.5], [1.5, 0], [1,1], [-1,1], [1,-1], [-1,-1]]), 
-    #     np.array([[-3.74,-0.78], [-3.79,0.6]])
-    # )
-    # poly = Polytope.from_vertices_rays(
-    #     np.array([[-1.5, 0], [0, 1.5], [0, -1.5], [1.5, 0], [1,1], [-1,1], [1,-1], [-1,-1]]), 
-    #     np.array([[-0.0995,-0.995], [0.0995,-0.995]])
-    # )
-
-    # poly = Polytope.from_a_b(np.array([[1, 0], [0.4, -1], [-1, -0.1]]), np.array([1, 2, 2]))
-    # poly = Polytope.from_a_b(np.array([[-1, -0.1], [0.4, -1], [1, 0]]), np.array([2, 2, 1]))
-    # poly = Polytope.from_a_b(np.array([[1, 0], [0.4, -1], [-1, -0.1]]), np.array([1, 2, 2]))
-    # poly = Polytope.from_a_b(np.array([[-1, 0.1], [-0.4, 1], [1, 0.1]]), np.array([1, 2, 2]))
-
-    (vert, rays) = poly.get_vertices_rays()
-    print(rays)
-    verts = poly.as_finite_polygon(30)
-    print(verts)
-    fig, ax = plt.subplots()
-    patch = mpatches.Polygon(verts, True)
-    ax.add_patch(patch)
-    ax.grid()
-    ax.axis('equal')
-    plt.show()
-
