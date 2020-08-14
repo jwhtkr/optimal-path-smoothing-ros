@@ -148,7 +148,7 @@ class ImplicationInequalityConstraint(BinaryInequalityConstraint):
         implication. This is assumed to not be a binary or integer constraint.
     big_m_vec : function
         A function of time that returns a vector (numpy.ndarray) of values such
-        that, when subtracted from the original inquality constraint portion,
+        that, when subtracted from the original inequality constraint portion,
         the inequality is satisfied for all state and control values in the
         region of interest. Typically consists of large, positive valued
         elements. This implicitly requires that the returned vector is the same
@@ -165,7 +165,7 @@ class ImplicationInequalityConstraint(BinaryInequalityConstraint):
         implication. This is assumed to not be a binary or integer constraint.
     big_m_vec : function
         A function of time that returns a vector (numpy.ndarray) of values such
-        that, when subtracted from the original inquality constraint portion,
+        that, when subtracted from the original inequality constraint portion,
         the inequality is satisfied for all state and control values in the
         region of interest. Typically consists of large, positive valued
         elements. This implicitly requires that the returned vector is the same

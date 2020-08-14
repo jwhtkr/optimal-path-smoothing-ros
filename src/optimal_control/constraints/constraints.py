@@ -47,7 +47,7 @@ class Constraints(object):
         self.ineq_constraints = list(ineq_constraints)
 
         if constraints is not None:
-            if len(constraints) < 2:
+            if isinstance(constraints, Constraints):
                 self.eq_constraints.extend(constraints.eq_constraints)
                 self.ineq_constraints.extend(constraints.ineq_constraints)
             else:

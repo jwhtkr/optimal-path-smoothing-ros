@@ -85,6 +85,8 @@ class SmoothPathLinear(fixed_time.FixedTime):
     def solve(self, warm_start=None, **kwargs):
         """See base class."""
         y = super(SmoothPathLinear, self).solve(warm_start, **kwargs)
+        if y is None:
+            raise ValueError("The optimization problem was not solved.")
         return (y[:self.n_dim*self.n_smooth*self.n_step],
                 y[self.n_dim*self.n_smooth*self.n_step:])
 
@@ -263,6 +265,28 @@ class SmoothPathLinear(fixed_time.FixedTime):
                                            ineq_bound_list=[ineq_bound])
 
 
+class SmoothPathLinearObstacles(SmoothPathLinear):
+    """
+    Represent smoothing a linear trajectory with obstacle avoidance as MIP.
+
+    Attributes
+    ----------
+    See base class for additional attributes.
+
+    Parameters
+    ----------
+    See base class for additional Parameters.
+    obstacle_constraints : bin_const.BinaryConstraints
+        The binary constraints for MIP obstacle avoidance.
+
+    """
+
+    def __init__(self, constraints, obstacle_constraints, cost, solver, n_step,
+                 initial_state, t_final=0., time_step=0., **kwargs): # noqa: D107
+        
+        super().__init__(constraints, cost, solver, n_step, initial_state,
+                         t_final, time_step)
+
 if __name__ == "__main__":
     import time as time_module
     # pylint: disable=invalid-name
@@ -284,11 +308,11 @@ if __name__ == "__main__":
             t_next, x_next, y_next = pts[i+1]
 
             if t_in >= t and t_in < t_next:
-                x_interp = interpolate(t_in, t, t_next, x, x_next)
-                y_interp = interpolate(t_in, t, t_next, y, y_next)
+                x_interpolated = interpolate(t_in, t, t_next, x, x_next)
+                y_interpolated = interpolate(t_in, t, t_next, y, y_next)
                 x_vel = (x_next-x)/(t_next-t)
                 y_vel = (y_next-y)/(t_next-t)
-                vec = [x_interp, y_interp, x_vel, y_vel, 0, 0, 0, 0]
+                vec = [x_interpolated, y_interpolated, x_vel, y_vel, 0, 0, 0, 0]
 
                 return np.array(vec).reshape(-1, 1)
 
