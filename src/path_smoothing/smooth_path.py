@@ -8,6 +8,8 @@ import optimal_control.opt_ctrl.direct.fixed_time as fixed_time
 import optimal_control.dynamics.integrator_dynamics as int_dyn
 import optimal_control.objectives.quadratic_cost as quad_cost
 import optimal_control.constraints.linear_constraints as lin_const
+import optimal_control.constraints.constraints as constrs
+import optimal_control.constraints.binary_constraints as bin_constr
 
 # pylint: disable=unused-import
 import optimal_control.solvers.osqp_solver as osqp
@@ -281,11 +283,68 @@ class SmoothPathLinearObstacles(SmoothPathLinear):
 
     """
 
+    imp_ineq_agg_constr = bin_constr.ImplicationInequalityAggregateConstraint
+
     def __init__(self, constraints, obstacle_constraints, cost, solver, n_step,
                  initial_state, t_final=0., time_step=0., **kwargs): # noqa: D107
-        
+        self.obst_constraints = self.imp_ineq_agg_constr(obstacle_constraints)
         super().__init__(constraints, cost, solver, n_step, initial_state,
                          t_final, time_step)
+
+    def _aggregate_constraints(self, dyn_constraint):
+        lin_agg_constraints = super()._aggregate_constraints(dyn_constraint)
+        return self._aggregate_with_obstacles(lin_agg_constraints)
+
+    def _aggregate_with_obstacles(self, non_binary_constrs):
+        a_mats, b_mats, b_vecs, m_mats = [], [], [], []
+        for i in range(self.n_step):
+            t = self.time_step*i
+
+            a_mat_t, b_mat_t, b_vec_t, m_mat_t = self._obstacles_at(t)
+            a_mats.append(a_mat_t)
+            b_mats.append(b_mat_t)
+            b_vecs.append(b_vec_t)
+            m_mats.append(m_mat_t)
+
+        sel_mat = self.obst_constraints.selection_mat
+        sel_mat_sum = np.sum(sel_mat, axis=0)
+        sel_mats = [sel_mat for _ in range(self.n_step)]
+        ones_mats = [sel_mat_sum for _ in range(self.n_step)]
+
+        a_mat_agg = sparse.block_diag(a_mats)
+        b_mat_agg = sparse.block_diag(b_mats)
+        b_vec_agg = np.concatenate(b_vecs)
+        m_mat_agg = sparse.block_diag(m_mats)
+        sel_mat_agg = sparse.block_diag(sel_mats)
+        ones_mat_agg = sparse.block_diag(ones_mats)
+
+        eq_mat_func = lambda t: (sparse.csr_matrix((self.n_step,
+                                                    self.n_dim*(self.n_smooth - 1))),
+                                 sparse.csr_matrix((self.n_step, self.n_dim)),
+                                 ones_mat_agg)
+        eq_val_func = lambda t: np.ones((self.n_step, 1))
+
+        imp_agg_constr = self.imp_ineq_agg_constr(ineq_mats=lambda t: (a_mat_agg,
+                                                                       b_mat_agg),
+                                                  b_vec=lambda t: b_vec_agg,
+                                                  m_mat=lambda t: m_mat_agg,
+                                                  sel_mat=lambda t: sel_mat_agg)
+        bin_sum_constr = bin_constr.BinaryLinearEqualityConstraint(eq_mat_func,
+                                                                   eq_val_func)
+
+        constraints = constrs.Constraints(eq_constraints=[bin_sum_constr],
+                                          ineq_constraints=[imp_agg_constr],
+                                          constraints=non_binary_constrs)
+        return constraints
+
+    def _obstacles_at(self, t):
+        a_mat, b_mat = self.obst_constraints.inequality.ineq_mats(t)
+        b_vec = self.obst_constraints.inequality.bound(t)
+        m_mat = self.obst_constraints.m_mat(t)
+
+        return a_mat, b_mat, b_vec, m_mat
+
+
 
 if __name__ == "__main__":
     import time as time_module

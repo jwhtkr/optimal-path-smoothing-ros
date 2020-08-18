@@ -9,6 +9,8 @@ from optimal_control.solvers import solver_utils
 from optimal_control.solvers import solver
 from optimal_control.objectives import quadratic_cost
 from optimal_control.constraints import linear_constraints
+from optimal_control.constraints import binary_constraints
+from optimal_control.constraints import constraints as constrs
 
 
 class Gurobi(solver.Solver):
@@ -46,6 +48,7 @@ class Gurobi(solver.Solver):
         self.model = gp.Model()
         self.x_vec = None
         self.u_vec = None
+        self.bin_vec = None
         self.obj = None
         # self.quadratic = None
         # self.linear = None
@@ -71,7 +74,7 @@ class Gurobi(solver.Solver):
         ----------
         objective : quadratic_cost.DiscreteQuadraticCost
             The cost object to be converted to the Gurobi formulation.
-        constraints : linear_constraints.LinearConstraints
+        constraints : constraints.Constraints
             The constraints object to be converted to the Gurobi formulation
         **kwargs
             The keyword arguments to be passed to the internal Gurobi solver
@@ -82,10 +85,10 @@ class Gurobi(solver.Solver):
         """
         if not isinstance(objective, quadratic_cost.QuadraticCost):
             raise TypeError("Gurobi can only solve optimization problems with a"
-                            " quadratic cost.")
-        if not isinstance(constraints, linear_constraints.LinearConstraints):
-            raise TypeError("Gurobi can only solve optimization problems with "
-                            "linear constraints.")
+                            " quadratic cost for now.")
+        # if not isinstance(constraints, linear_constraints.LinearConstraints):
+        #     raise TypeError("Gurobi can only solve optimization problems with "
+        #                     "linear constraints.")
 
         if not isinstance(objective,
                           quadratic_cost.DiscreteCondensedQuadraticCost):
@@ -97,46 +100,80 @@ class Gurobi(solver.Solver):
         # P, q = solver_utils.to_p_q(objective)
         # A, lb, ub = solver_utils.to_a_l_u(constraints)
 
-
-
         if not self.is_setup:
-            self.x_vec = self.model.addMVar(shape=int(constraints.n_state),
-                                   vtype=gp.GRB.CONTINUOUS,
-                                   lb=-np.inf,
-                                   name="x")
-            self.u_vec = self.model.addMVar(shape=int(constraints.n_ctrl),
-                                   vtype=gp.GRB.CONTINUOUS,
-                                   lb=-np.inf,
-                                   name="u")
-
-            self.obj = objective.instantaneous(None, self.x_vec, self.u_vec)
-            self.obj += objective.terminal(None, self.x_vec, self.u_vec)
-            if isinstance(objective, quadratic_cost.cost.Cost):
-                self.model.setObjective(self.obj, gp.GRB.MINIMIZE)
-            else:
-                self.model.setObjective(self.obj, gp.GRB.MAXIMIZE)
-
-            a_eq_mat, b_eq_mat, b_eq_vec = constraints.equality_mat_vec(None)
-            a_ineq_mat, b_ineq_mat, b_ineq_vec = constraints.inequality_mat_vec(None)
-            self.model.addConstr(a_eq_mat @ self.x_vec + b_eq_mat @ self.u_vec
-                                    == b_eq_vec.flatten(),
-                                 name="eq_constr")
-            self.model.addConstr(a_ineq_mat @ self.x_vec + b_ineq_mat @ self.u_vec
-                                    <= b_ineq_vec.flatten(),
-                                 name="ineq_constr")
+            self._setup(objective, constraints, **kwargs)
 
             self.is_setup = True
         else:
             # TODO: Adjust to only update what has changed, not the whole problem
             # self.solver.update(P, q, A, l, u)
             # self.solver.update_settings(**kwargs)
-            pass
+            raise RuntimeError("Updating Gurobi is not supported currently.")
 
-        # self.quadratic = P
-        # self.linear = q
-        # self.constraint_matrix = A
-        # self.lower_bound = l
-        # self.upper_bound = u
+    def _setup(self, objective, constraints, **kwargs):  # pylint: disable=unused-argument
+        self.x_vec = self.model.addMVar(shape=int(constraints.n_state),
+                                        vtype=gp.GRB.CONTINUOUS,
+                                        lb=-np.inf,
+                                        name="x")
+        self.u_vec = self.model.addMVar(shape=int(constraints.n_ctrl),
+                                        vtype=gp.GRB.CONTINUOUS,
+                                        lb=-np.inf,
+                                        name="u")
+
+        self._make_objective(objective)
+        self._make_constraints(constraints)
+
+        # a_eq_mat, b_eq_mat, b_eq_vec = constraints.equality_mat_vec(None)
+        # a_ineq_mat, b_ineq_mat, b_ineq_vec = constraints.inequality_mat_vec(None)
+        # self.model.addConstr(a_eq_mat @ self.x_vec + b_eq_mat @ self.u_vec
+        #                         == b_eq_vec.flatten(),
+        #                         name="eq_constr")
+        # self.model.addConstr(a_ineq_mat @ self.x_vec + b_ineq_mat @ self.u_vec
+        #                         <= b_ineq_vec.flatten(),
+        #                         name="ineq_constr")
+
+    def _make_objective(self, objective):
+        self.obj = objective.instantaneous(None, self.x_vec, self.u_vec)
+        self.obj += objective.terminal(None, self.x_vec, self.u_vec)
+        if isinstance(objective, quadratic_cost.cost.Cost):
+            self.model.setObjective(self.obj, gp.GRB.MINIMIZE)
+        else:
+            self.model.setObjective(self.obj, gp.GRB.MAXIMIZE)
+
+    def _make_constraints(self, constraints):
+        has_binary = False
+        for eq_constr in constraints.eq_constraints:
+            if isinstance(eq_constr,
+                          binary_constraints.BinaryEqualityConstraint):
+                if not has_binary:
+                    self.bin_vec = self.model.addMVar(shape=(int(eq_constr.n_binary),),
+                                                      vtype=gp.GRB.BINARY,
+                                                      name="binary")
+                    has_binary = True
+
+                constr_val = eq_constr.constraint(None, self.x_vec, self.u_vec,
+                                                  self.bin_vec)
+            else:
+                constr_val = eq_constr.constraint(None, self.x_vec, self.u_vec)
+
+            self.model.addConstr(constr_val == eq_constr.eq_val(None).flatten())
+
+        for ineq_constr in constraints.ineq_constraints:
+            if isinstance(ineq_constr,
+                          binary_constraints.BinaryInequalityConstraint):
+                if not has_binary:
+                    self.bin_vec = self.model.addMVar(shape=(int(ineq_constr.n_binary),),
+                                                      vtype=gp.GRB.BINARY,
+                                                      name="binary")
+                    has_binary = True
+
+                constr_val = ineq_constr.constraint(None, self.x_vec,
+                                                    self.u_vec, self.bin_vec)
+            else:
+                constr_val = ineq_constr.constraint(None, self.x_vec,
+                                                    self.u_vec)
+
+            self.model.addConstr(constr_val <= ineq_constr.bound(None).flatten())
 
     def solve(self, **kwargs):
         """

@@ -133,9 +133,10 @@ def smooth_obstacles_mip(desired_path, q_mat, r_mat, s_mat, a_cnstr_mat,
     args = _setup_obstacles_mip(desired_path, q_mat, r_mat, s_mat, a_cnstr_mat,
                                 b_cnstr_mat, free_regions, time_step)
 
-    smoother = smooth.SmoothPathLinear(args.constraints, args.cost, args.solver,
-                                       args.n_step, args.initial_state,
-                                       time_step=args.time_step)
+    smoother = smooth.SmoothPathLinearObstacles(args.constraints, args.cost,
+                                                args.solver, args.n_step,
+                                                args.initial_state,
+                                                time_step=args.time_step)
 
     return smoother.solve()
 
