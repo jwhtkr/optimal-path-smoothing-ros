@@ -82,7 +82,7 @@ class LinearConstraints(constraints.Constraints):
 
     def equality_mat_vec(self, t, as_sparse=True):
         """
-        Return the joint equality constraint's A, B, and b of Ax + Bu = b.
+        Return the joint equality constraints A, B, and b of Ax + Bu = b.
 
         Parameters
         ----------
@@ -104,14 +104,14 @@ class LinearConstraints(constraints.Constraints):
         """
         eq_mats_a = []
         eq_mats_b = []
-        for const in self.eq_constraints:
-            a_mat, b_mat = const.eq_mats(t)
+        for constr in self.eq_constraints:
+            a_mat, b_mat = constr.eq_mats(t)
             if a_mat is not None and b_mat is not None:
                 eq_mats_a.append(sparse.coo_matrix(a_mat))
                 eq_mats_b.append(sparse.coo_matrix(b_mat))
 
-        eq_vecs = [const.eq_val(t) for const in self.eq_constraints
-                   if const.eq_val(t) is not None]
+        eq_vecs = [constr.eq_val(t) for constr in self.eq_constraints
+                   if constr.eq_val(t) is not None]
 
         if not eq_mats_a or not eq_mats_b or not eq_vecs:
             return (sparse.coo_matrix((0, self.n_state)),
@@ -150,12 +150,12 @@ class LinearConstraints(constraints.Constraints):
         """
         ineq_mats_a = []
         ineq_mats_b = []
-        for const in self.ineq_constraints:
-            a_mat, b_mat = const.ineq_mats(t)
+        for constr in self.ineq_constraints:
+            a_mat, b_mat = constr.ineq_mats(t)
             ineq_mats_a.append(sparse.coo_matrix(a_mat))
             ineq_mats_b.append(sparse.coo_matrix(b_mat))
 
-        ineq_vecs = [const.bound(t) for const in self.ineq_constraints]
+        ineq_vecs = [constr.bound(t) for constr in self.ineq_constraints]
 
         if not ineq_mats_a or not ineq_mats_b or not ineq_vecs:
             return (sparse.coo_matrix((0, self.n_state)),
@@ -210,7 +210,8 @@ class LinearEqualityConstraint(constraint.EqualityConstraint):
     def constraint(self, t, state, ctrl):
         """See base class."""
         a_mat, b_mat = self.eq_mats(t)
-        return np.dot(a_mat, state) + np.dot(b_mat, ctrl)
+        # return np.dot(a_mat, state) + np.dot(b_mat, ctrl)
+        return a_mat @ state + b_mat @ ctrl
 
 
 class LinearInequalityConstraint(constraint.InequalityConstraint):
@@ -250,7 +251,8 @@ class LinearInequalityConstraint(constraint.InequalityConstraint):
     def constraint(self, t, state, ctrl):
         """See base class."""
         a_mat, b_mat = self.ineq_mats(t)
-        return np.dot(a_mat, state) + np.dot(b_mat, ctrl)
+        # return np.dot(a_mat, state) + np.dot(b_mat, ctrl)
+        return a_mat @ state + b_mat @ ctrl
 
 
 class LinearTimeInstantConstraint(LinearEqualityConstraint):
