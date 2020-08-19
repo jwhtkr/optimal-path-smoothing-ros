@@ -30,7 +30,7 @@ MAT_FILES = {"box": MAT_FILE_BASE.format("box"),
              "voronoi": MAT_FILE_BASE.format("voronoi"),
              "voronoi_vels": MAT_FILE_BASE.format("voronoi_vels"),
              "original": MAT_FILE_BASE.format("original")}
-MAT_FILE = MAT_FILES["original"]
+MAT_FILE = MAT_FILES["box"]
 
 SmoothingArguments = collections.namedtuple("SmoothingArguments",
                                             ["constraints",
@@ -41,6 +41,16 @@ SmoothingArguments = collections.namedtuple("SmoothingArguments",
                                              "time_step",
                                              "n_dim",
                                              "n_int"])
+SmoothingArgumentsObstacles = collections.namedtuple("SmoothingArgumentsObstacles",
+                                                     ["constraints",
+                                                      "obstacle_constraints",
+                                                      "cost",
+                                                      "solver",
+                                                      "n_step",
+                                                      "initial_state",
+                                                      "time_step",
+                                                      "n_dim",
+                                                      "n_int"])
 FreeRegion = collections.namedtuple("FreeRegion", ["A", "b"])
 
 def _path_from_mat(path_matrix, time_step):
@@ -133,9 +143,10 @@ def smooth_obstacles_mip(desired_path, q_mat, r_mat, s_mat, a_cnstr_mat,
     args = _setup_obstacles_mip(desired_path, q_mat, r_mat, s_mat, a_cnstr_mat,
                                 b_cnstr_mat, free_regions, time_step)
 
-    smoother = smooth.SmoothPathLinearObstacles(args.constraints, args.cost,
-                                                args.solver, args.n_step,
-                                                args.initial_state,
+    smoother = smooth.SmoothPathLinearObstacles(args.constraints,
+                                                args.obstacle_constraints,
+                                                args.cost, args.solver,
+                                                args.n_step, args.initial_state,
                                                 time_step=args.time_step)
 
     return smoother.solve()
@@ -163,12 +174,10 @@ def _setup_obstacles_mip(desired_path, q_mat, r_mat, s_mat, a_cnstr_mat,
                                                                len(free_regions))
         constr_list.append(bin_const)
 
-    constraints = constrs.Constraints(ineq_constraints=constr_list,
-                                      constraints=params.constraints)
-
-    return SmoothingArguments(constraints, params.cost, solver, params.n_step,
-                              params.initial_state, params.time_step,
-                              params.n_dim, params.n_int)
+    return SmoothingArgumentsObstacles(params.constraints, constr_list,
+                                       params.cost, solver, params.n_step,
+                                       params.initial_state, params.time_step,
+                                       params.n_dim, params.n_int)
 
 def _calc_big_m(region, limits):
     a_mat, b_vec = region
@@ -227,36 +236,63 @@ def test_obstacles_mip():
     """Test MIP Obstacle avoidance."""
     xd_mat, q_mat, r_mat, s_mat, a_mat, b_vec, dt = _constrained_from_mat(_load())
     free_regions = _create_free_regions(np.squeeze(xd_mat[:, 0, :]))
+    # fig, ax = _plot_free_regions(free_regions)
+    # ax.plot(xd_mat[0, 0, :].flatten(), xd_mat[1, 0, :].flatten())
+    # plt.show()
 
     result = smooth_obstacles_mip(xd_mat[:, :-1, :], q_mat, r_mat, s_mat, a_mat,
                                   b_vec, free_regions, dt)
-    _plot(result[0], xd_mat)
+    # _plot(result[0], xd_mat)
     return result
 
 def _create_free_regions(position, dist=5.0):
-    offset = np.array([[dist, -dist, dist, -dist], [dist, dist, -dist, -dist]])
+    offset = np.array([[dist, -dist, -dist, dist], [dist, dist, -dist, -dist]])
     curr_pos = position[:, 0].reshape(-1, 1)
     curr_idx = 0
     polys = []
     while curr_idx < position.shape[1]:
         box_vertices = np.transpose(curr_pos+offset)
         polys.append(poly.Polytope.from_vertices_rays(box_vertices))
-        curr_dist = np.linalg.norm(position-curr_pos, axis=0)
-        far_idx = np.nonzero(curr_dist > 2*dist - dist/10)[0]
-        after_idx = np.nonzero(far_idx > curr_idx)[0]
-        try:
-            curr_idx = far_idx[after_idx[0]]
-        except IndexError:
-            if curr_idx < position.shape[1] - 1:  # If less than last index
-                curr_idx = position.shape[1] - 1  # Set to last index
-            else:
-                curr_idx = position.shape[1]  # Set to value to break out of while loop
-        try:
-            curr_pos = position[:, curr_idx].reshape(-1, 1)
-        except IndexError:
-            pass  # if the index is out of bounds, then its time to end the loop
+        tmp_idx, tmp_pos = _get_next_after(position, curr_pos, curr_idx,
+                                           dist - dist/20)
+        curr_idx, curr_pos = _get_next_after(position, tmp_pos, tmp_idx,
+                                             dist - dist/20)
 
+
+    # _plot_free_regions(polys)
+    # plt.show()
     return [FreeRegion(*region.get_a_b()) for region in polys]
+
+def _get_next_after(position, curr_pos, curr_idx, dist):
+    dist_vec = np.linalg.norm(position-curr_pos, axis=0)
+    far_idx = np.nonzero(dist_vec > dist - dist/10)[0]
+    after_idx = np.nonzero(far_idx > curr_idx)[0]
+    try:
+        out_idx = far_idx[after_idx[0]]
+    except IndexError:  # there are no indices in `far_idx` greater than the current index
+        if curr_idx < position.shape[1] - 1:  # If currently less than last index
+            out_idx = position.shape[1] - 1  # Set to last index
+        else:  # currently at or beyond last valid index
+            out_idx = position.shape[1]  # Set to an invalid index value
+    try:
+        out_pos = position[:, out_idx].reshape(-1, 1)
+    except IndexError:
+        out_pos = curr_pos # if the index is out of bounds, then return current position
+
+    return out_idx, out_pos
+
+def _plot_free_regions(regions):
+    polys = []
+    for region in regions:
+        if not isinstance(region, poly.Polytope):
+            region = poly.Polytope.from_a_b(region.A, region.b)
+        polys.append(plt.Polygon(region.get_vertices_rays()[0]))
+    poly_collection = plt.matplotlib.collections.PatchCollection(polys,
+                                                                 alpha=0.4)
+    fig, ax = plt.subplots()
+    ax.add_collection(poly_collection)
+    ax.autoscale()
+    return fig, ax
 
 if __name__ == "__main__":
     import time

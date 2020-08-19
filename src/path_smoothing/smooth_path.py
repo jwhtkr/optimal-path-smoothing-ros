@@ -311,6 +311,8 @@ class SmoothPathLinearObstacles(SmoothPathLinear):
         sel_mats = [sel_mat for _ in range(self.n_step)]
         ones_mats = [sel_mat_sum for _ in range(self.n_step)]
 
+        b_mats[-1] = sparse.coo_matrix((b_mats[-1].shape[0], 0))
+
         a_mat_agg = sparse.block_diag(a_mats)
         b_mat_agg = sparse.block_diag(b_mats)
         b_vec_agg = np.concatenate(b_vecs)
@@ -319,8 +321,8 @@ class SmoothPathLinearObstacles(SmoothPathLinear):
         ones_mat_agg = sparse.block_diag(ones_mats)
 
         eq_mat_func = lambda t: (sparse.csr_matrix((self.n_step,
-                                                    self.n_dim*(self.n_smooth - 1))),
-                                 sparse.csr_matrix((self.n_step, self.n_dim)),
+                                                    self.n_step*self.n_dim*self.n_smooth)),
+                                 sparse.csr_matrix((self.n_step, (self.n_step-1)*self.n_dim)),
                                  ones_mat_agg)
         eq_val_func = lambda t: np.ones((self.n_step, 1))
 
@@ -328,7 +330,7 @@ class SmoothPathLinearObstacles(SmoothPathLinear):
                                                                        b_mat_agg),
                                                   b_vec=lambda t: b_vec_agg,
                                                   m_mat=lambda t: m_mat_agg,
-                                                  sel_mat=lambda t: sel_mat_agg)
+                                                  sel_mat=sel_mat_agg)
         bin_sum_constr = bin_constr.BinaryLinearEqualityConstraint(eq_mat_func,
                                                                    eq_val_func)
 

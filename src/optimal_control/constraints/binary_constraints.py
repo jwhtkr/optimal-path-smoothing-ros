@@ -8,6 +8,11 @@ import optimal_control.constraints.linear_constraints as lin_constr
 import optimal_control.sparse_utils as sparse
 
 
+def any_none(iterable):
+    is_none = [item is None for item in iterable]
+    return any(is_none)
+
+
 class BinaryEqualityConstraint(constraint.EqualityConstraint):
     """
     Represent an equality constraint with binary variables.
@@ -262,28 +267,28 @@ class ImplicationInequalityAggregateConstraint(BinaryInequalityConstraint):
             self._check_dimensional_consistency(implications_linear)  # Raises ValueError on fail
             ineq, m_mat, sel_mat = self._aggregate(implications_linear)
             self.inequality, self.m_mat, self.selection_mat = ineq, m_mat, sel_mat
-            super().__init__(implications_linear.n_binary,
+            super().__init__(sel_mat.shape[1],
                              self.inequality.n_state, self.inequality.n_ctrl,
                              self.inequality.bound)
         else:
-            if not all([ineq_mats, b_vec, m_mat, sel_mat]):
+            if any_none([ineq_mats, b_vec, m_mat, sel_mat]):
                 raise TypeError("If `implications_linear` is not specified, "
                                 "all of the other arguments must be given a "
                                 "value.")
             a_mat_0, b_mat_0 = ineq_mats(0)
-            n_state = a_mat_0.shape[0]
+            n_state = a_mat_0.shape[1]
             n_ctrl = b_mat_0.shape[1]
             n_binary = sel_mat.shape[1]
             super().__init__(n_binary, n_state, n_ctrl, b_vec)
             self.inequality = lin_constr.LinearInequalityConstraint(ineq_mats,
                                                                     self.bound)
             self.m_mat = m_mat
+            self.selection_mat = sel_mat
 
     def _check_dimensional_consistency(self, implications):
-        dims = [[imp.n_state, imp.n_ctrl, imp.n_binary] for imp in implications]
-        n_state = dims[:][0]
-        n_ctrl = dims[:][1]
-        n_binary = dims[:][2]
+        n_state = [imp.n_state for imp in implications]
+        n_ctrl = [imp.n_ctrl for imp in implications]
+        n_binary = [imp.n_binary for imp in implications]
         if not n_state.count(n_state[0]) == len(n_state):
             raise ValueError("All of the implication constraints must be for "
                              "the same number of states.")
@@ -296,37 +301,41 @@ class ImplicationInequalityAggregateConstraint(BinaryInequalityConstraint):
 
     def _aggregate(self, implications):
         lin_constr_ineq = lin_constr.LinearInequalityConstraint
-        imps = [[imp.inequality.ineq_mats, imp.inequality.bound, imp.big_m_vec,
-                 imp.idx]
-                for imp in implications]
 
-        ineq_mats = imps[:][0]
-        bounds = imps[:][1]
-        big_m_vecs = imps[:][2]
-        idxs = imps[:][3]
+        ineq_mats = [imp.inequality.ineq_mats for imp in implications]
+        bounds = [imp.bound for imp in implications]
+        big_m_vecs = [imp.big_m_vec.reshape(-1, 1) for imp in implications]
+        idxs = [imp.idx for imp in implications]
+
         selection_mat = np.zeros((len(idxs), implications[0].n_binary))
+
         for i, idx in enumerate(idxs):
             selection_mat[i, idx] = 1
 
-        def _aggregate_mats(t, mats):
+        def _aggregate_a_b_mats(t, mats):
             a_b_mats = [mat(t) for mat in mats]
-            return sparse.block_diag(a_b_mats[:][0]), sparse.block_diag(a_b_mats[:][1])
+            a_mats = [sparse.coo_matrix(a_b[0]) for a_b in a_b_mats]
+            b_mats = [sparse.coo_matrix(a_b[1]) for a_b in a_b_mats]
+            return sparse.vstack(a_mats), sparse.vstack(b_mats)
 
-        def _aggregate_vecs(t, vecs):
+        def _aggregate_b_vecs(t, vecs):
             return np.concatenate([vec(t) for vec in vecs])
 
-        return (lin_constr_ineq(lambda t: _aggregate_mats(t, ineq_mats),
-                                lambda t: _aggregate_vecs(t, bounds)),
-                lambda t: _aggregate_mats(t, big_m_vecs),
+        m_mat = sparse.block_diag(big_m_vecs)
+
+        return (lin_constr_ineq(lambda t: _aggregate_a_b_mats(t, ineq_mats),
+                                lambda t: _aggregate_b_vecs(t, bounds)),
+                lambda t: m_mat,
                 selection_mat)
 
     def constraint(self, t, state, ctrl, binary):
         """See base class."""
-        bin_vars = self.selection_mat @ binary
+        fat_one = np.ones(binary.shape)
         ineq_val = self.inequality.constraint(t, state, ctrl)
         m_mat = self.m_mat(t)
+        ms_mat = m_mat @ self.selection_mat
 
-        return ineq_val + m_mat @ (bin_vars - 1)
+        return ineq_val + ms_mat @ binary - ms_mat @ fat_one
 
 
 class BinaryLinearEqualityConstraint(BinaryEqualityConstraint):

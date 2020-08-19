@@ -76,12 +76,12 @@ class Constraints(object):
         Parameters
         ----------
         t : double
-            The time at which to evalutate the constraint.
+            The time at which to evaluate the constraint.
         state : numpy.ndarray
             The state at time `t` for which the constraint should be evaluated.
         ctrl : numpy.ndarray
             The control input at time `t` for which the constraint should be
-            evalutated.
+            evaluated.
 
         Returns
         -------
@@ -104,12 +104,12 @@ class Constraints(object):
         Parameters
         ----------
         t : double
-            The time at which to evalutate the constraint.
+            The time at which to evaluate the constraint.
         state : numpy.ndarray
             The state at time `t` for which the constraint should be evaluated.
         ctrl : numpy.ndarray
             The control input at time `t` for which the constraint should be
-            evalutated.
+            evaluated.
 
         Returns
         -------
@@ -138,12 +138,12 @@ class Constraints(object):
     #     Parameters
     #     ----------
     #     t : double
-    #         The time at which to evalutate the constraint.
+    #         The time at which to evaluate the constraint.
     #     state : numpy.ndarray
     #         The state at time `t` for which the constraint should be evaluated.
     #     ctrl : numpy.ndarray
     #         The control input at time `t` for which the constraint should be
-    #         evalutated.
+    #         evaluated.
 
     #     Returns
     #     -------
