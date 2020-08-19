@@ -66,13 +66,13 @@ class Constraint(object):
 
         Parameters
         ----------
-        t : double
-            The time at which to evalutate the constraint.
+        t : float
+            The time at which to evaluate the constraint.
         state : numpy.ndarray
             The state at time `t` for which the constraint should be evaluated.
         ctrl : numpy.ndarray
             The control input at time `t` for which the constraint should be
-            evalutated.
+            evaluated.
 
         Returns
         -------
@@ -91,17 +91,17 @@ class Constraint(object):
 
         Parameters
         ----------
-        t : double
-            The time at which to evalutate the constraint.
+        t : float
+            The time at which to evaluate the constraint.
         state : numpy.ndarray
             The state at time `t` for which the constraint should be evaluated.
         ctrl : numpy.ndarray
             The control input at time `t` for which the constraint should be
-            evalutated.
+            evaluated.
 
         Returns
         -------
-        double or np.array of doubles
+        float or numpy.ndarray of float
             The value of the evaluation of the constraint function.
 
         """
@@ -116,13 +116,13 @@ class Constraint(object):
 
     #     Parameters
     #     ----------
-    #     t : double
-    #         The time at which to evalutate the derivative of the constraint.
+    #     t : float
+    #         The time at which to evaluate the derivative of the constraint.
     #     state : numpy.ndarray
     #         The state at time `t` for which the derivative should be evaluated.
     #     ctrl : numpy.ndarray
     #         The control input at time `t` for which the derivative should be
-    #         evalutated.
+    #         evaluated.
 
     #     Returns
     #     -------
@@ -153,7 +153,7 @@ class EqualityConstraint(Constraint):  # pylint: disable=abstract-method
     eq_val : func
         A function of time that returns the desired value of the constraint.
         I.e.: h(t, state, ctrl) = eq_val(t).
-    eps : double
+    eps : float
         Determines the allowable tolerance of the constraint, as in:
         abs(h(t, state, ctrl) - eq_val(t)) < eps. Its default value is 1e-6.
 
@@ -166,7 +166,7 @@ class EqualityConstraint(Constraint):  # pylint: disable=abstract-method
     eq_val : func
         A function of time that returns the desired value of the constraint.
         I.e.: h(t, state, ctrl) = eq_val(t).
-    eps : double, default 1e-6
+    eps : float, default 1e-6
         Determines the allowable tolerance of the constraint, as in:
         abs(h(t, state, ctrl) - eq_val(t)) < eps. Its default value is 1e-6.
 

@@ -28,10 +28,11 @@ class Constraints(object):
     ineq_constraints : list of InequalityConstraint, optional
         A list of inequality constraints for an optimization problem. If not
         specified, then `eq_constraints` must be specified.
-    constraints : Constraints, optional
+    constraints : Constraints, list of Constraints optional
         Another :obj:`Constraints` object from which the constraints are to be
         inherited. In other words, the constraints from `constraints` will be
-        appended to `eq_constraints` and `ineq_constraints`.
+        appended to `eq_constraints` and `ineq_constraints`. A list of :obj:
+        `Constraints` objects can be passed as well.
 
     """
 
@@ -46,15 +47,20 @@ class Constraints(object):
         self.ineq_constraints = list(ineq_constraints)
 
         if constraints is not None:
-            self.eq_constraints.extend(constraints.eq_constraints)
-            self.ineq_constraints.extend(constraints.ineq_constraints)
+            if isinstance(constraints, Constraints):
+                self.eq_constraints.extend(constraints.eq_constraints)
+                self.ineq_constraints.extend(constraints.ineq_constraints)
+            else:
+                for constrs in constraints:
+                    self.eq_constraints.extend(constrs.eq_constraints)
+                    self.ineq_constraints.extend(constrs.ineq_constraints)
 
         n_state = []
         n_ctrl = []
         for const in self.eq_constraints + self.ineq_constraints:
             n_state.append(const.n_state)
             n_ctrl.append(const.n_ctrl)
-        # if all values of n_state and n_ctrl are not consistent its a problem.
+        # if all values of n_state and n_ctrl are not consistent it's a problem.
         if (not n_state.count(n_state[0]) == len(n_state)
                 or not n_ctrl.count(n_ctrl[0]) == len(n_ctrl)):
             raise ValueError("All constraints must be for the same number of "
@@ -70,12 +76,12 @@ class Constraints(object):
         Parameters
         ----------
         t : double
-            The time at which to evalutate the constraint.
+            The time at which to evaluate the constraint.
         state : numpy.ndarray
             The state at time `t` for which the constraint should be evaluated.
         ctrl : numpy.ndarray
             The control input at time `t` for which the constraint should be
-            evalutated.
+            evaluated.
 
         Returns
         -------
@@ -98,12 +104,12 @@ class Constraints(object):
         Parameters
         ----------
         t : double
-            The time at which to evalutate the constraint.
+            The time at which to evaluate the constraint.
         state : numpy.ndarray
             The state at time `t` for which the constraint should be evaluated.
         ctrl : numpy.ndarray
             The control input at time `t` for which the constraint should be
-            evalutated.
+            evaluated.
 
         Returns
         -------
@@ -132,12 +138,12 @@ class Constraints(object):
     #     Parameters
     #     ----------
     #     t : double
-    #         The time at which to evalutate the constraint.
+    #         The time at which to evaluate the constraint.
     #     state : numpy.ndarray
     #         The state at time `t` for which the constraint should be evaluated.
     #     ctrl : numpy.ndarray
     #         The control input at time `t` for which the constraint should be
-    #         evalutated.
+    #         evaluated.
 
     #     Returns
     #     -------
