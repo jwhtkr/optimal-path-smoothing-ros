@@ -1,5 +1,6 @@
 """Represent constraints involving binary variables."""
 
+import collections
 
 import numpy as np
 
@@ -327,6 +328,25 @@ class ImplicationInequalityAggregateConstraint(BinaryInequalityConstraint):
                                 lambda t: _aggregate_b_vecs(t, bounds)),
                 lambda t: m_mat,
                 selection_mat)
+
+    def get_individual_rows(self, t):
+        """Get the list of individual rows of implication constraints at `t`."""
+        # imp_rows = []
+        ImplicationRow = collections.namedtuple("ImplicationRow",
+                                                ["a_row",
+                                                 "b_row",
+                                                 "rhs_val",
+                                                 "bin_idx"])
+        m_mat = self.m_mat(t)
+        a_mat, b_mat = self.inequality.ineq_mats(t)
+        a_mat, b_mat = a_mat.tocsc(), b_mat.tocsc()
+        b_vec = self.bound(t)
+        ms_mat = m_mat @ self.selection_mat
+
+        for row, col in zip(*ms_mat.nonzero()):
+            yield ImplicationRow(a_mat[row, :], b_mat[row, :], b_vec[row], col)
+
+        # return imp_rows
 
     def constraint(self, t, state, ctrl, binary):
         """See base class."""
