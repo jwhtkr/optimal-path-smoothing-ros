@@ -305,7 +305,7 @@ class ImplicationInequalityAggregateConstraint(BinaryInequalityConstraint):
 
         ineq_mats = [imp.inequality.ineq_mats for imp in implications]
         bounds = [imp.bound for imp in implications]
-        big_m_vecs = [imp.big_m_vec.reshape(-1, 1) for imp in implications]
+        big_m_vecs = [imp.big_m_vec for imp in implications]
         idxs = [imp.idx for imp in implications]
 
         selection_mat = np.zeros((len(idxs), implications[0].n_binary))
@@ -322,11 +322,12 @@ class ImplicationInequalityAggregateConstraint(BinaryInequalityConstraint):
         def _aggregate_b_vecs(t, vecs):
             return np.concatenate([vec(t) for vec in vecs])
 
-        m_mat = sparse.block_diag(big_m_vecs)
+        def _aggregate_m_vecs(t, vecs):
+            return sparse.block_diag([vec(t) for vec in vecs])
 
         return (lin_constr_ineq(lambda t: _aggregate_a_b_mats(t, ineq_mats),
                                 lambda t: _aggregate_b_vecs(t, bounds)),
-                lambda t: m_mat,
+                lambda t: _aggregate_m_vecs(t, big_m_vecs),
                 selection_mat)
 
     def get_individual_rows(self, t):
