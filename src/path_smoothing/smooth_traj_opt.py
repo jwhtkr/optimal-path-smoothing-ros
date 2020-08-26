@@ -30,7 +30,47 @@ MAT_FILES = {"box": MAT_FILE_BASE.format("box"),
              "voronoi": MAT_FILE_BASE.format("voronoi"),
              "voronoi_vels": MAT_FILE_BASE.format("voronoi_vels"),
              "original": MAT_FILE_BASE.format("original")}
-MAT_FILE = MAT_FILES["box"]
+MAT_FILE = MAT_FILES["voronoi"]
+
+USE_KEY_FRAME = True
+KEY_FRAME_STEP = 10
+
+CREATE_FREE_REGIONS = False
+
+Point = collections.namedtuple("Point", ["x", "y"])
+
+OBSTACLE_MIDDLE = {"bl": Point(12.5, 7.),
+            "tl": Point(12.5, 8.),
+            "tr": Point(13.5, 8.),
+            "br": Point(13.5, 7.)}
+
+CORRIDOR_WORLD_STRAIGHT = {1: ((-2., -2., 14., 14.),
+                               (-1.75, 1.75, 1.75, -1.75)),
+                           2: ((10., 10., 14., 14.,),
+                               (-1.75, 10., 10., -1.75)),
+                           3: ((10., 10., 22., 22.),
+                               (6., 10., 10., 6.)),
+                           4: ((18., 18., 22., 22.),
+                               (-8., 10., 10., -8)),
+                           5: ((0., 0., 22., 22.),
+                               (-8., -4., -4., -8.))}
+
+CORRIDOR_WORLD_STRAIGHT_WITH_OBSTACLE = {1: ((-2., -2., 14., 14.),
+                                             (-1.75, 1.75, 1.75, -1.75)),
+                                         2: ((10., 10., 14., 14.,),
+                                             (-1.75, OBSTACLE_MIDDLE["bl"].y, OBSTACLE_MIDDLE["bl"].y, -1.75)),
+                                         3: ((10., 10., OBSTACLE_MIDDLE["tl"].x, OBSTACLE_MIDDLE["tl"].x),
+                                             (OBSTACLE_MIDDLE["bl"].y-1, 10, 10, OBSTACLE_MIDDLE["bl"].y-1)),
+                                         4: ((10., 10., OBSTACLE_MIDDLE["tr"].x+1, OBSTACLE_MIDDLE["tr"].x+1),
+                                             (OBSTACLE_MIDDLE["tl"].y, 10., 10., OBSTACLE_MIDDLE["tl"].y)),
+                                         5: ((OBSTACLE_MIDDLE["tr"].x, OBSTACLE_MIDDLE["tr"].x, 22., 22.),
+                                             (6., 10., 10., 6.)),
+                                         6: ((18., 18., 22., 22.),
+                                             (-8., 10., 10., -8)),
+                                         7: ((0., 0., 22., 22.),
+                                             (-8., -4., -4., -8.))}
+
+WORLD = CORRIDOR_WORLD_STRAIGHT_WITH_OBSTACLE
 
 SmoothingArguments = collections.namedtuple("SmoothingArguments",
                                             ["constraints",
@@ -52,6 +92,18 @@ SmoothingArgumentsObstacles = collections.namedtuple("SmoothingArgumentsObstacle
                                                       "n_dim",
                                                       "n_int"])
 FreeRegion = collections.namedtuple("FreeRegion", ["A", "b"])
+
+def _indicator(t, dt):
+    return True if ((math.floor(t/dt) % KEY_FRAME_STEP) == 0) else False
+
+def _key_frame(key_frame_return_func, other_return_func, indicator_func):
+    def _key_frame_func(*args, **kwargs):
+        if indicator_func(*args, **kwargs):
+            return key_frame_return_func(*args, **kwargs)
+        else:
+            return other_return_func(*args, **kwargs)
+
+    return _key_frame_func
 
 def _path_from_mat(path_matrix, time_step):
     def path(t):
@@ -121,12 +173,21 @@ def _setup_constrained(desired_path, q_mat, r_mat, s_mat, a_mat, b_mat, time_ste
     a_mat = a_mat.reshape(-1, params.n_dim*(params.n_int+1), params.n_step, order="F")
     def ineq_mats(t):
         """Return (A, B) of the constraint at time `t`."""
-        ind = int(t//time_step)
+        ind = math.floor(t/time_step)
         return a_mat[:, :-params.n_dim, ind], a_mat[:, -params.n_dim:, ind]
     def ineq_bound(t):
         """Return b of the constraint at time `t`."""
-        ind = int(t//time_step)
+        ind = math.floor(t/time_step)
         return b_mat[:, ind, np.newaxis]
+
+    if USE_KEY_FRAME:
+        ineq_mats = _key_frame(ineq_mats,
+                               lambda t: (np.empty((0, params.n_dim*params.n_int)),
+                                          np.empty((0, params.n_dim))),
+                               lambda t: _indicator(t, params.time_step))
+        ineq_bound = _key_frame(ineq_bound,
+                                lambda t: np.empty((0, 1)),
+                                lambda t: _indicator(t, params.time_step))
     ineq_const = lin_consts.LinearInequalityConstraint(ineq_mats=ineq_mats,
                                                        bound=ineq_bound)
 
@@ -143,7 +204,7 @@ def smooth_obstacles_mip(desired_path, q_mat, r_mat, s_mat, a_cnstr_mat,
     args = _setup_obstacles_mip(desired_path, q_mat, r_mat, s_mat, a_cnstr_mat,
                                 b_cnstr_mat, free_regions, time_step)
 
-    smoother = smooth.SmoothPathLinearObstacles(args.constraints,
+    smoother = smooth.SmoothPathLinearObstaclesMip(args.constraints,
                                                 args.obstacle_constraints,
                                                 args.cost, args.solver,
                                                 args.n_step, args.initial_state,
@@ -158,16 +219,28 @@ def _setup_obstacles_mip(desired_path, q_mat, r_mat, s_mat, a_cnstr_mat,
 
     solver = gurobi.Gurobi()  # Only Gurobi can handle obstacles (Mixed Integer Programming)
 
+    if USE_KEY_FRAME:
+        indicator = lambda t: _indicator(t, params.time_step)
+        ineq_empty = lambda t: (np.empty((0, params.n_dim*params.n_int)),
+                                np.empty((0, params.n_dim)))
+        bound_empty = lambda t: np.empty((0, 1))
+        m_vec_empty = lambda t: np.empty((0, 1))
+
     constr_list = []
     for i, region in enumerate(free_regions):
         a_pos_mat, b_vec = region
         a_rest_mat = np.zeros((a_pos_mat.shape[0],
                                params.n_dim*(params.n_int-1)))
         a_mat = np.concatenate([a_pos_mat, a_rest_mat], axis=1)
-        ineq_mats = lambda t, a=a_mat: (a, np.zeros((a.shape[0], params.n_dim)))
-        inequality = lin_consts.LinearInequalityConstraint(ineq_mats,
-                                                           lambda t, b=b_vec: b)
-        big_m_vec = _calc_big_m(region, np.array([[-100, 100], [-100, 100]]))
+        ineq_mats = lambda t, *, _a=a_mat: (_a, np.zeros((_a.shape[0], params.n_dim)))
+        bound = lambda t, *, _b=b_vec: _b.reshape(-1, 1)
+        big_m_vec = _calc_big_m(region, np.array([[-50, 50], [-50, 50]]))
+        big_m_vec = lambda t, *, _m=big_m_vec: _m
+        if USE_KEY_FRAME:
+            ineq_mats = _key_frame(ineq_mats, ineq_empty, indicator)
+            bound = _key_frame(bound, bound_empty, indicator)
+            big_m_vec = _key_frame(big_m_vec, m_vec_empty, indicator)
+        inequality = lin_consts.LinearInequalityConstraint(ineq_mats, bound)
         bin_const = bin_consts.ImplicationInequalityConstraint(i,
                                                                inequality,
                                                                big_m_vec,
@@ -185,7 +258,8 @@ def _calc_big_m(region, limits):
                                               # combos of the limit values.
                                               # This is combinatorial,so careful!
     values = a_mat @ expanded_limits
-    return np.max(np.abs(values), axis=1) + np.abs(b_vec)
+    return (np.max(np.abs(values), axis=1, keepdims=1)
+            + np.abs(b_vec.reshape(-1, 1)))
 
 def _expand_limits(limits):
     """Expand `limits` to include all the "corners" of a hyper-cube."""
@@ -196,7 +270,6 @@ def _expand_limits(limits):
         lower_limit = limits[-1, 0] * np.ones((prev_limits.shape[1]))
         upper_limit = limits[-1, 1] * np.ones((prev_limits.shape[1]))
         return np.block([[prev_limits, prev_limits], [lower_limit, upper_limit]])
-
 
 def test_unconstrained():
     """Test unconstrained."""
@@ -210,12 +283,14 @@ def _load():
     f_name = os.path.join(f_dir, MAT_FILE)
     return scipy.io.loadmat(f_name)
 
-def _plot(x, xd_mat):
+def _plot(x, xd_mat, fig=None, axes=None):
+    if not fig or not axes:
+        fig, axes = plt.subplot()
     x_mat = x.reshape(xd_mat.shape[0], xd_mat.shape[1]-1,
                       xd_mat.shape[2], order="F")
-    plt.plot(xd_mat[0, 0, :], xd_mat[1, 0, :],
-             x_mat[0, 0, :], x_mat[1, 0, :])
-    plt.show()
+    axes.plot(xd_mat[0, 0, :], xd_mat[1, 0, :],
+              x_mat[0, 0, :], x_mat[1, 0, :])
+    return fig, axes
 
 def _unconstrained_from_mat(args):
     return args["xd_mat"], args["Q"], args["R"], args["S"], args["dt"][0][0]
@@ -235,14 +310,16 @@ def _constrained_from_mat(args):
 def test_obstacles_mip():
     """Test MIP Obstacle avoidance."""
     xd_mat, q_mat, r_mat, s_mat, a_mat, b_vec, dt = _constrained_from_mat(_load())
-    free_regions = _create_free_regions(np.squeeze(xd_mat[:, 0, :]))
-    # fig, ax = _plot_free_regions(free_regions)
-    # ax.plot(xd_mat[0, 0, :].flatten(), xd_mat[1, 0, :].flatten())
-    # plt.show()
+    if CREATE_FREE_REGIONS:
+        free_regions = _create_free_regions(np.squeeze(xd_mat[:, 0, :]))
+    else:
+        free_regions = _free_regions_from(WORLD)
+    fig, axes = _plot_free_regions(free_regions)
+    # axes.plot(xd_mat[0, 0, :].flatten(), xd_mat[1, 0, :].flatten())
 
     result = smooth_obstacles_mip(xd_mat[:, :-1, :], q_mat, r_mat, s_mat, a_mat,
                                   b_vec, free_regions, dt)
-    # _plot(result[0], xd_mat)
+    _plot(result[0], xd_mat, fig=fig, axes=axes)
     return result
 
 def _create_free_regions(position, dist=5.0):
@@ -253,17 +330,17 @@ def _create_free_regions(position, dist=5.0):
     while curr_idx < position.shape[1]:
         box_vertices = np.transpose(curr_pos+offset)
         polys.append(poly.Polytope.from_vertices_rays(box_vertices))
-        tmp_idx, tmp_pos = _get_next_after(position, curr_pos, curr_idx,
-                                           dist - dist/20)
-        curr_idx, curr_pos = _get_next_after(position, tmp_pos, tmp_idx,
-                                             dist - dist/20)
+        tmp_idx, tmp_pos = _get_next_idx_pos_after(position, curr_pos, curr_idx,
+                                                   dist - dist/20)
+        curr_idx, curr_pos = _get_next_idx_pos_after(position, tmp_pos, tmp_idx,
+                                                     dist - dist/20)
 
 
     # _plot_free_regions(polys)
     # plt.show()
     return [FreeRegion(*region.get_a_b()) for region in polys]
 
-def _get_next_after(position, curr_pos, curr_idx, dist):
+def _get_next_idx_pos_after(position, curr_pos, curr_idx, dist):
     dist_vec = np.linalg.norm(position-curr_pos, axis=0)
     far_idx = np.nonzero(dist_vec > dist - dist/10)[0]
     after_idx = np.nonzero(far_idx > curr_idx)[0]
@@ -281,7 +358,15 @@ def _get_next_after(position, curr_pos, curr_idx, dist):
 
     return out_idx, out_pos
 
-def _plot_free_regions(regions):
+def _free_regions_from(regions_dict):
+    polys = []
+    for _, region in regions_dict.items():
+        vertices = np.array(region).T
+        polys.append(poly.Polytope.from_vertices_rays(vertices))
+
+    return [FreeRegion(*region.get_a_b()) for region in polys]
+
+def _plot_free_regions(regions, fig=None, axes=None):
     polys = []
     for region in regions:
         if not isinstance(region, poly.Polytope):
@@ -289,10 +374,11 @@ def _plot_free_regions(regions):
         polys.append(plt.Polygon(region.get_vertices_rays()[0]))
     poly_collection = plt.matplotlib.collections.PatchCollection(polys,
                                                                  alpha=0.4)
-    fig, ax = plt.subplots()
-    ax.add_collection(poly_collection)
-    ax.autoscale()
-    return fig, ax
+    if not fig or not axes:
+        fig, axes = plt.subplots()
+    axes.add_collection(poly_collection)
+    axes.autoscale()
+    return fig, axes
 
 if __name__ == "__main__":
     import time
@@ -301,3 +387,4 @@ if __name__ == "__main__":
     # test_constrained()
     test_obstacles_mip()
     print(time.time()-t_start)
+    plt.show()

@@ -267,7 +267,7 @@ class SmoothPathLinear(fixed_time.FixedTime):
                                            ineq_bound_list=[ineq_bound])
 
 
-class SmoothPathLinearObstacles(SmoothPathLinear):
+class SmoothPathLinearObstaclesMip(SmoothPathLinear):
     """
     Represent smoothing a linear trajectory with obstacle avoidance as MIP.
 
