@@ -4,7 +4,51 @@ import cdd
 import numpy as np
 
 class Polytope:
-    """Represents a 2D polytope."""
+    """
+    Represents a 2D polytope.
+
+    Example of creating a polytope that splits the 2D plane into two regions.
+    ```
+    # create a polytope from linear constraints
+    poly = Polytope.from_a_b(np.array([
+        [1, 1]
+    ]), np.array([
+        1
+    ]))
+
+    # create a polytope from vertices and rays
+    poly = Polytope.from_vertices_rays(np.array([
+        [0.5, 0.5]
+    ]), np.array([
+        [-1, 1],
+        [1, -1]
+    ]))
+    ```
+
+    Example of creating a square polytope centered at the origin.
+    ```
+    # create a polytope from linear constraints
+    poly = Polytope.from_a_b(np.array([
+        [1, 0],
+        [0, 1],
+        [-1, 0],
+        [0, -1]
+    ]), np.array([
+        1,
+        1,
+        1,
+        1
+    ]))
+
+    # create a polytope from vertices and rays
+    poly = Polytope.from_vertices_rays(np.array([
+        [1, 1],
+        [-1, 1],
+        [1, -1],
+        [-1, -1]
+    ]))
+    ```
+    """
 
     def __init__(self, matrix): # noqa: D107
         self.polyhedron = cdd.Polyhedron(matrix)
@@ -19,9 +63,9 @@ class Polytope:
         Parameters
         ----------
         a_mat : numpy.array
-            2D A matrix.
+            2D A matrix of the form [[a11, a12, ...], [a21, a22, ...], ...].
         b_mat : numpy.array
-            1D b matrix.
+            1D b matrix of the form [b1, b2, ...].
         """
         b_trans = np.reshape(b_mat, (b_mat.shape[0], 1))
         neg_a = np.negative(a_mat)
@@ -37,13 +81,14 @@ class Polytope:
         Create polytope from a set of vertices and rays.
 
         The polytope is canonicalized to remove all implicit linearities and all redundancies.
+        The rays are vectors pointing towards vertices at infinity.
 
         Parameters
         ----------
         vertices : numpy.array
-            Array of 2D vertices.
+            Array of 2D vertices of the form [[x1, y1], [x2, y2], ...].
         rays : numpy.array
-            Array of 2D rays.
+            Array of 2D rays of the form [[x1, y1], [x2, y2], ...].
         """
         ones = np.ones((vertices.shape[0], 1))
         ones_vertices = np.concatenate((ones, vertices), axis=1)
@@ -75,7 +120,7 @@ class Polytope:
 
         Returns
         ----------
-        (verts, rays) : (numpy.array, numpy.array)
+        (vertices, rays) : (numpy.array, numpy.array)
             Vertices and rays.
         """
         gen = np.array(self.polyhedron.get_generators())
@@ -100,7 +145,8 @@ class Polytope:
         Returns
         ----------
         vertices : numpy.array
-            Vertices sorted in clockwise order.
+            Array of vertices of the form [[x1, y1], [x2, y2], ...].
+            The vertices are sorted in clockwise order.
         """
         (verts, rays) = self.get_vertices_rays()
         # sort vertices by angle with the average of all vertices

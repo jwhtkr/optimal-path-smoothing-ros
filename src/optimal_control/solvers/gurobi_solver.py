@@ -167,42 +167,13 @@ class Gurobi(solver.Solver):
                                                       name="binary")
                     has_binary = True
 
-                # if isinstance(ineq_constr,
-                #               binary_constraints.ImplicationInequalityAggregateConstraint):
-                #     for row_imp in ineq_constr.get_individual_rows(None):
-                #         a_vec, b_vec, rhs_val, idx = row_imp
-                #         lhs = self._make_expr(a_vec, b_vec)
-                #         self.model.addGenConstrIndicator(self.bin_vec[idx],
-                #                                          True,
-                #                                          lhs,
-                #                                          gp.GRB.LESS_EQUAL,
-                #                                          rhs_val)
-                # else:
-                #     constr_val = ineq_constr.constraint(None, self.x_vec,
-                #                                         self.u_vec, self.bin_vec)
-                #     self.model.addConstr(constr_val
-                #                          <= ineq_constr.bound(None).flatten())
                 constr_val = ineq_constr.constraint(None, self.x_vec,
                                                     self.u_vec, self.bin_vec)
-                self.model.addConstr(constr_val
-                                     <= ineq_constr.bound(None).flatten())
             else:
                 constr_val = ineq_constr.constraint(None, self.x_vec,
                                                     self.u_vec)
-                self.model.addConstr(constr_val
-                                     <= ineq_constr.bound(None).flatten())
 
-    def _make_expr(self, a_vec, b_vec):
-        a_vec, b_vec = a_vec.tocsc(), b_vec.tocsc()
-        # def _mult(vec, vars):
-        #     vec = vec.tocsc()
-        #     for row, col in zip(*vec.nonzero()):
-        #         yield vec[row, col] * vars[col]
-
-        expr = gp.quicksum((a_vec[i, j] * self.x_vec.vararr[j] for i, j in zip(*a_vec.nonzero())))
-        expr += gp.quicksum((b_vec[i, j] * self.u_vec.vararr[j] for i, j in zip(*b_vec.nonzero())))
-
-        return expr
+            self.model.addConstr(constr_val <= ineq_constr.bound(None).flatten())
 
     def solve(self, **kwargs):
         """

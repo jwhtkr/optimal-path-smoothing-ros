@@ -57,6 +57,7 @@ dependencies:
   - pip=20.1.1=py_1
   - prompt-toolkit=3.0.5=py_1
   - ptyprocess=0.6.0=py_1001
+  - pydocstyle=5.0.2=py_0
   - pygments=2.6.1=py_0
   - pylint=2.5.3=py37hc8dfbb8_0
   - pyparsing=2.4.7=pyh9f0ad1d_0
@@ -64,10 +65,12 @@ dependencies:
   - python-dateutil=2.8.1=py_0
   - python_abi=3.7=1_cp37m
   - readline=8.0=he28a2e2_2
+  - rope=0.17.0=py_0
   - scipy=1.5.2=py37hb14ef9d_0
   - setuptools=49.2.0=py37hc8dfbb8_0
   - six=1.15.0=pyh9f0ad1d_0
   - snakeviz=2.1.0=pyh9f0ad1d_0
+  - snowballstemmer=2.0.0=py_0
   - sqlite=3.32.3=hcee41ef_1
   - tk=8.6.10=hed695b0_0
   - toml=0.10.1=pyh9f0ad1d_0
@@ -80,5 +83,7 @@ dependencies:
   - xz=5.2.5=h516909a_1
   - zlib=1.2.11=h516909a_1006
   - zstd=1.4.5=h6597ccf_2
-prefix: /home/justin/miniconda3/envs/path-smoothing
+  - pip:
+    - pycddlib==2.1.2
+prefix: /home/justin/miniconda3/envs/path_smoothing
 
