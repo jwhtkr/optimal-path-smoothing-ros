@@ -1,6 +1,7 @@
 # cspell: disable
 """Implement the MISOSTrajectoryProblem.m in python with pyomo."""
-# import pyomo.environ as pyomo
+import pyomo.environ as pyo
+import pyomo
 import numpy as np
 
 class MisosTrajectoryProblem:
@@ -16,96 +17,102 @@ class MisosTrajectoryProblem:
 
     def solve_trajectory(self, start, goal, safe_region_sets, safe_region_assignments=()):
         """Solve for a trajectory."""
-        # check for mosek
-        # check for yalmip
 
-        if start.size[1] > self.traj_degree + 1:
+        if start.shape[1] > self.traj_degree + 1:
             print('For a degree d polynomial, we can only constrain at most '
                   'the first d derivatives. Additional derivatives ignored.')
             start = start[:, :self.traj_degree]
 
-        if goal.size[1] > self.traj_degree + 1:
+        if goal.shape[1] > self.traj_degree + 1:
             print('For a degree d polynomial, we can only constrain at most '
                   'the first d derivatives. Additional derivatives ignored.')
             goal = goal[:, :self.traj_degree]
 
-
-        ########################################################################
-        # The following (until the "closing" line of pound signs) is probably not
-        # necessary in python. A Matlab `cell` is basically matlab's version of a
-        # list, but also not quite. Point being, especially with Python's duck-typing
-        # philosophy, these probably aren't needed.
-        if not is_cell(safe_region_sets):
-            safe_region_sets = {safe_region_sets}
-
-        if not is_cell(safe_region_assignments):
-            safe_region_assignments = {safe_region_assignments}
-        ########################################################################
-
-        dim = start.size[0]
-        # nan should probably be replaced with None, depending on what exactly
-        # size_check does. Not sure what `size_check` does though.
-        size_check(goal, [dim, nan])
+        dim = start.shape[0]
+        if goal.shape[0] != dim:
+            print('Goal and start are different sizes.')
 
         C_BOUND = 100
         SIGMA_BOUND = 100
 
-        # sdpvar (...) -> pyomo.Var(...) https://yalmip.github.io/command/sdpvar/
-        t = sdpvar(1, 1)
+        model = pyo.ConcreteModel()
+
+        model.t = pyo.Var(within = pyo.Reals)
+        t = model.t
 
         if self.basis == 'monomials':
-            # https://yalmip.github.io/command/monolist/
-            basis = monolist(t, self.traj_degree)
+            monomials = [1,
+                         t,
+                         t**2,
+                         t**3,
+                         t**4,
+                         t**5,
+                         t**6,
+                         t**7]
+            basis = monomials[0:self.traj_degree]
         elif self.basis == 'legendre':
             shifted_legendre = [1,
                                 2*t - 1,
-                                6*t^2 - 6*t + 1,
-                                (20*t^3 - 30*t^2 + 12*t - 1)/5,
-                                (70*t^4 - 140*t^3 + 90*t^2 - 20*t + 1)/10,
-                                (252*t^5 - 630*t^4 + 560*t^3 - 210*t^2 + 30*t - 1)/50,
-                                (924*t^6 - 2772*t^5 + 3150*t^4 - 1680*t^3 + 420*t^2 - 42*t + 1)/100,
-                                (3432*t^7 - 12012*t^6 + 16632*t^5 - 11550*t^4 + 4200*t^3 - 756*t^2 + 56*t - 1)/1000]
+                                6*t**2 - 6*t + 1,
+                                (20*t**3 - 30*t**2 + 12*t - 1)/5,
+                                (70*t**4 - 140*t**3 + 90*t**2 - 20*t + 1)/10,
+                                (252*t**5 - 630*t**4 + 560*t**3 - 210*t**2 + 30*t - 1)/50,
+                                (924*t**6 - 2772*t**5 + 3150*t**4 - 1680*t**3 + 420*t**2 - 42*t + 1)/100,
+                                (3432*t**7 - 12012*t**6 + 16632*t**5 - 11550*t**4 + 4200*t**3 - 756*t**2 + 56*t - 1)/1000]
             basis = shifted_legendre[0:self.traj_degree]
         else:
             print('Invalid basis name')
 
-        assign(t, 0)
-        basis_t0 = value(basis)
-        assign(t, 1)
-        basis_t1 = value(basis)
+        t.set_value(0)
+        basis_t0 = map(lambda x : pyo.value(x), basis)
+        t.set_value(1)
+        basis_t1 = map(lambda x : pyo.value(x), basis)
 
-        c = []
-        for j in range(0, self.num_traj_segments):
-            c[j] = sdpvar(self.traj_degree+1, dim, 'full')  # sdpvar(...) -> pyomo.Var(...)
-            x[j] = c[j]*basis
-            # https://yalmip.github.io/command/jacobian/
-            xd[j] = [jacobian(x[j], t)]
-            # https://yalmip.github.io/command/coefficients/
-            cd[j] = [[coefficients(xd[j][1][1], t), 0]]
-            for d in range(1, dim):
-                cd[j][0][:, d] = [coefficients(xd[j][0][d], t), 0]
-            for k in range(1, self.traj_degree):
-                xd[j][k] = jacobian(xd[j][k-1], t)
-                cd[j][k] = [coefficients(xd[j][k][0], t), np.zeros((k, 1))]
-                for d in range(1, dim):
-                    cd[j][k][:, d] = [coefficients(xd[j][k][d], t), np.zeros((k, 1))]
+        print(basis_t0)
+        print(basis_t1)
+
+        a = range(0, self.num_traj_segments)
+        b = range(0, self.traj_degree+1)
+        c = range(0, dim)
+        model.c = pyo.Var(a, b, c, within=pyo.Reals)
+
+        # j - polynomial piece j
+        # k - kth derivative
+        # i - ith dimension?
+        def gen_x(model, j, k, i):
+            #? X{j} = C{j}'*basis
+            return model.c[j, k, i] * basis[i]
+        model.x = pyo.Expression(a, b, c, rule=gen_x)
+
+        # i am not sure if this is correct for the jacobian
+        def gen_xd(model, j, k, i):
+            #? Xd{j} = {jacobian(X{j}, t)}
+            return pyo.differentiate(model.x[j, k, i], wrt=t, mode=pyomo.core.expr.calculus.derivatives.Modes.sympy)
+        model.xd = pyo.Expression(a, b, c, rule=gen_xd)
+
+        # need Cd, created using coefficients(...) from xd
+        
+
 
         x0 = start[:, 1]
         xf = goal[:, 1]
 
-        constraints = []
-
-        for j in range(0, start.size[1]):
+        # I don't think this does the same as the matlab
+        def gen_init_c(model, j, k, i):
             if j == 0:
-                constraints.append(c[0] * basis_t0 == start[:, j])  # constraints = [constraints, c[0] * basis_t0 == start[:,j]]
+                return model.c[0, k, i] * basis_t0[i] == start[i, j]
             else:
-                constraints.append(c[0][j-1] * [1, zeros(self.traj_degree, 1)] == start[:, j]) # constraints = [constraints, c[0][j-1] * [1, zeros(self.traj_degree, 1)] == start[:,j]]
+                return model.cd[0, j-1, k, i] * 1 == start[i, j]
+        model.init_c = pyo.Constraint(a, b, c, rule=gen_init_c)
 
-        for j in range(0, goal.size[1]):
+        # I don't think this does the same as the matlab
+        def gen_final_c(model, j, k, i):
             if j == 0:
-                constraints.append(c[self.num_traj_segments] * basis_t1 == goal[:, j])  # constraints = [constraints, c[self.num_traj_segments] * basis_t1 == goal[:,j]]
+                return model.c[self.num_traj_segments, k, i] * basis_t1[i] == goal[i, j]
             else:
-                constraints.append(c[self.num_traj_segments][j-1] * [1, ones(self.traj_degree, 1)] == goal[:, j])  # constraints = [constraints, c[self.num_traj_segments][j-1] * [1, ones(self.traj_degree, 1)] == goal[:,j]]
+                return model.cd[self.num_traj_segments, j-1, k, i] * 1 == goal[i, j]
+        model.final_c = pyo.Constraint(a, b, c, rule=gen_init_c)
+
 
         region = []
         for j in range(0, len(safe_region_sets)):  # Convert to pythonic for loop (for safe_region_set in safe_region_sets: ...)
@@ -245,3 +252,13 @@ class MisosTrajectoryProblem:
 
         # btw, you probably already know this, but there is still a little more
         # after the debug section of the Matlab file that I think should be here.
+
+if __name__ == "__main__":
+    problem = MisosTrajectoryProblem();
+    problem.solve_trajectory(np.array([
+        [0, 0],
+    ]), np.array([
+        [1, 1]
+    ]), np.array([
+        
+    ]))
