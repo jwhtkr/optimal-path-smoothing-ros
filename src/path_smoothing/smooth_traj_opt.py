@@ -40,9 +40,14 @@ CREATE_FREE_REGIONS = False
 Point = collections.namedtuple("Point", ["x", "y"])
 
 OBSTACLE_MIDDLE = {"bl": Point(12.5, 7.),
-            "tl": Point(12.5, 8.),
-            "tr": Point(13.5, 8.),
-            "br": Point(13.5, 7.)}
+                   "tl": Point(12.5, 8.),
+                   "tr": Point(13.5, 8.),
+                   "br": Point(13.5, 7.)}
+
+OBSTACLE_EARLY = {"bl": Point(10.5, 0.),
+                  "tl": Point(10.5, 1.),
+                  "tr": Point(11.5, 1.),
+                  "br": Point(11.5, 0.)}
 
 CORRIDOR_WORLD_STRAIGHT = {1: ((-2., -2., 14., 14.),
                                (-1.75, 1.75, 1.75, -1.75)),
@@ -55,22 +60,53 @@ CORRIDOR_WORLD_STRAIGHT = {1: ((-2., -2., 14., 14.),
                            5: ((0., 0., 22., 22.),
                                (-8., -4., -4., -8.))}
 
-CORRIDOR_WORLD_STRAIGHT_WITH_OBSTACLE = {1: ((-2., -2., 14., 14.),
-                                             (-1.75, 1.75, 1.75, -1.75)),
-                                         2: ((10., 10., 14., 14.,),
-                                             (-1.75, OBSTACLE_MIDDLE["bl"].y, OBSTACLE_MIDDLE["bl"].y, -1.75)),
-                                         3: ((10., 10., OBSTACLE_MIDDLE["tl"].x, OBSTACLE_MIDDLE["tl"].x),
-                                             (OBSTACLE_MIDDLE["bl"].y-1, 10, 10, OBSTACLE_MIDDLE["bl"].y-1)),
-                                         4: ((10., 10., OBSTACLE_MIDDLE["tr"].x+1, OBSTACLE_MIDDLE["tr"].x+1),
-                                             (OBSTACLE_MIDDLE["tl"].y, 10., 10., OBSTACLE_MIDDLE["tl"].y)),
-                                         5: ((OBSTACLE_MIDDLE["tr"].x, OBSTACLE_MIDDLE["tr"].x, 22., 22.),
-                                             (6., 10., 10., 6.)),
-                                         6: ((18., 18., 22., 22.),
-                                             (-8., 10., 10., -8)),
-                                         7: ((0., 0., 22., 22.),
-                                             (-8., -4., -4., -8.))}
+CORRIDOR_WORLD_STRAIGHT_WITH_OBSTACLE_MIDDLE = {1: ((-2., -2., 14., 14.),
+                                                    (-1.75, 1.75, 1.75, -1.75)),
+                                                2: ((10., 10., 14., 14.,),
+                                                    (-1.75, OBSTACLE_MIDDLE["bl"].y,
+                                                     OBSTACLE_MIDDLE["bl"].y, -1.75)),
+                                                3: ((10., 10., OBSTACLE_MIDDLE["tl"].x,
+                                                     OBSTACLE_MIDDLE["tl"].x),
+                                                    (OBSTACLE_MIDDLE["bl"].y-1, 10, 10,
+                                                     OBSTACLE_MIDDLE["bl"].y-1)),
+                                                4: ((10., 10., OBSTACLE_MIDDLE["tr"].x+1,
+                                                     OBSTACLE_MIDDLE["tr"].x+1),
+                                                    (OBSTACLE_MIDDLE["tl"].y, 10., 10.,
+                                                     OBSTACLE_MIDDLE["tl"].y)),
+                                                5: ((OBSTACLE_MIDDLE["tr"].x,
+                                                     OBSTACLE_MIDDLE["tr"].x, 22., 22.),
+                                                    (6., 10., 10., 6.)),
+                                                6: ((18., 18., 22., 22.),
+                                                    (-8., 10., 10., -8)),
+                                                7: ((0., 0., 22., 22.),
+                                                    (-8., -4., -4., -8.))}
 
-WORLD = CORRIDOR_WORLD_STRAIGHT_WITH_OBSTACLE
+CORRIDOR_WORLD_STRAIGHT_WITH_OBSTACLE_EARLY = {1: ((-2., -2., OBSTACLE_EARLY["bl"].x,
+                                                    OBSTACLE_EARLY["bl"].x),
+                                                   (-1.75, 1.75, 1.75, -1.75)),
+                                               2: ((OBSTACLE_EARLY["bl"].x-1,
+                                                    OBSTACLE_EARLY["bl"].x-1, 14., 14.),
+                                                   (-1.75, OBSTACLE_EARLY["bl"].y,
+                                                    OBSTACLE_EARLY["bl"].y, -1.75)),
+                                               3: ((OBSTACLE_EARLY["tr"].x,
+                                                    OBSTACLE_EARLY["tr"].x, 14., 14.),
+                                                   (-1.75, OBSTACLE_EARLY["tr"].y+1,
+                                                    OBSTACLE_EARLY["tr"].y+1, -1.75)),
+                                               4: ((10., 10., 14., 14.,),
+                                                   (OBSTACLE_EARLY["tr"].y, 10., 10.,
+                                                    OBSTACLE_EARLY["tr"].y)),
+                                               5: ((10., 10., 22., 22.),
+                                                   (6., 10., 10., 6.)),
+                                               6: ((18., 18., 22., 22.),
+                                                   (-8., 10., 10., -8)),
+                                               7: ((0., 0., 22., 22.),
+                                                   (-8., -4., -4., -8.))}
+
+
+# WORLD = CORRIDOR_WORLD_STRAIGHT_WITH_OBSTACLE_EARLY
+WORLD = CORRIDOR_WORLD_STRAIGHT
+
+END_IDX = 1500
 
 SmoothingArguments = collections.namedtuple("SmoothingArguments",
                                             ["constraints",
@@ -90,11 +126,16 @@ SmoothingArgumentsObstacles = collections.namedtuple("SmoothingArgumentsObstacle
                                                       "initial_state",
                                                       "time_step",
                                                       "n_dim",
-                                                      "n_int"])
+                                                      "n_int",
+                                                      "bin_vec"])
 FreeRegion = collections.namedtuple("FreeRegion", ["A", "b"])
 
 def _indicator(t, dt):
-    return True if ((math.floor(t/dt) % KEY_FRAME_STEP) == 0) else False
+    div = t/dt
+    int_val = math.floor(div)
+    if math.isclose(1, div % 1):
+        int_val += 1
+    return True if (int_val % KEY_FRAME_STEP == 0) else False
 
 def _key_frame(key_frame_return_func, other_return_func, indicator_func):
     def _key_frame_func(*args, **kwargs):
@@ -210,7 +251,9 @@ def smooth_obstacles_mip(desired_path, q_mat, r_mat, s_mat, a_cnstr_mat,
                                                 args.n_step, args.initial_state,
                                                 time_step=args.time_step)
 
-    return smoother.solve()
+    return smoother.solve(warm_start=(desired_path.flatten(order="F"),
+                                      np.zeros((args.n_dim*(args.n_step-1),)),
+                                      args.bin_vec))
 
 def _setup_obstacles_mip(desired_path, q_mat, r_mat, s_mat, a_cnstr_mat,
                          b_cnstr_mat, free_regions, time_step):
@@ -247,10 +290,35 @@ def _setup_obstacles_mip(desired_path, q_mat, r_mat, s_mat, a_cnstr_mat,
                                                                len(free_regions))
         constr_list.append(bin_const)
 
+    # bin_vec = [[True if c.is_satisfied(i*params.time_step,
+    #                                    desired_path[:, :, i].reshape(-1, 1, order="F"),
+    #                                    np.zeros((params.n_dim, 1)),
+    #                                    np.ones((c.n_binary, 1))) else False
+    #             for c in constr_list]
+    #            for i in range(len(desired_path[0][0])) if indicator(i*params.time_step)]
+    bin_vec = []
+    u_vec = np.zeros((params.n_dim, 1))
+    for i in range(len(desired_path[0, 0, :])):
+        t = i*params.time_step
+        x_vec = desired_path[:, :, i].reshape(-1, 1, order="F")
+        bin_vec.append([])
+        for c in constr_list:
+            b_vec = np.array([True for _ in range(c.n_binary)]).reshape(-1, 1)
+            if c.is_satisfied(t, x_vec, u_vec, b_vec):
+                bin_vec[i].append(True if not USE_KEY_FRAME or indicator(t) else False)
+            else:
+                bin_vec[i].append(False)
+
+    bin_vec = np.array(bin_vec)
+    bin_vec = np.where(np.any(bin_vec, axis=1, keepdims=True),
+                       bin_vec,
+                       gurobi.gp.GRB.UNDEFINED)
+    bin_vec = bin_vec.flatten()
+
     return SmoothingArgumentsObstacles(params.constraints, constr_list,
                                        params.cost, solver, params.n_step,
                                        params.initial_state, params.time_step,
-                                       params.n_dim, params.n_int)
+                                       params.n_dim, params.n_int, bin_vec)
 
 def _calc_big_m(region, limits):
     a_mat, b_vec = region
@@ -317,9 +385,10 @@ def test_obstacles_mip():
     fig, axes = _plot_free_regions(free_regions)
     # axes.plot(xd_mat[0, 0, :].flatten(), xd_mat[1, 0, :].flatten())
 
-    result = smooth_obstacles_mip(xd_mat[:, :-1, :], q_mat, r_mat, s_mat, a_mat,
-                                  b_vec, free_regions, dt)
-    _plot(result[0], xd_mat, fig=fig, axes=axes)
+    result = smooth_obstacles_mip(xd_mat[:, :-1, :END_IDX], q_mat, r_mat, s_mat,
+                                  a_mat[:, :, :, :END_IDX], b_vec[:, :END_IDX],
+                                  free_regions, dt)
+    _plot(result[0], xd_mat[:, :, :END_IDX], fig=fig, axes=axes)
     return result
 
 def _create_free_regions(position, dist=5.0):
