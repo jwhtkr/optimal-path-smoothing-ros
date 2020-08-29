@@ -1,3 +1,6 @@
+# force floating point division as default
+from __future__ import division
+
 # cspell: disable
 """Implement the MISOSTrajectoryProblem.m in python with pyomo."""
 import pyomo.environ as pyo
@@ -18,58 +21,89 @@ class MisosTrajectoryProblem:
     def solve_trajectory(self, start, goal, safe_region_sets, safe_region_assignments=()):
         """Solve for a trajectory."""
 
-        if start.shape[1] > self.traj_degree + 1:
-            print('For a degree d polynomial, we can only constrain at most '
-                  'the first d derivatives. Additional derivatives ignored.')
-            start = start[:, :self.traj_degree]
+        # 2D position: start = [[px], [py]]
+        # 2D position, velocity: start = [[px, vx], [py, vy]]
+        # 3D position, velocity: start = [[px, vx], [py, vy], [pz, vz]]
 
-        if goal.shape[1] > self.traj_degree + 1:
-            print('For a degree d polynomial, we can only constrain at most '
-                  'the first d derivatives. Additional derivatives ignored.')
-            goal = goal[:, :self.traj_degree]
-
-        dim = start.shape[0]
-        if goal.shape[0] != dim:
-            print('Goal and start are different sizes.')
-
+        # constant bounds
         C_BOUND = 100
         SIGMA_BOUND = 100
 
-        model = pyo.ConcreteModel()
+        # number of coefficients in the polynomial
+        coefficient_num = self.traj_degree + 1
+        print('coefficient_num')
+        print(coefficient_num)
 
-        model.t = pyo.Var(within = pyo.Reals)
-        t = model.t
+        # === Check Inputs ===
 
+        # Remove extra derivatives that can not be
+        # constrained by the degree of polynomial selected.
+        if start.shape[1] > coefficient_num:
+            print('For a degree d polynomial, we can only constrain at most '
+                  'the first d derivatives. Additional derivatives ignored.')
+            start = start[:, 0:coefficient_num]
+
+        # Remove extra derivatives that can not be
+        # constrained by the degree of polynomial selected.
+        if goal.shape[1] > coefficient_num:
+            print('For a degree d polynomial, we can only constrain at most '
+                  'the first d derivatives. Additional derivatives ignored.')
+            goal = goal[:, 0:coefficient_num]
+
+        # Check the start and goal have the same dimension.
+        dim = start.shape[0]
+        if goal.shape[0] != dim:
+            print('Goal and start have different dimensions.')
+
+        print('start')
+        print(start)
+        print('goal')
+        print(goal)
+
+        # === Construct Coefficients ===
+        
+        # Start with a basis coefficients matrix b_mat.
+        # basis = b_mat * [1 t t^2 t^3 ...]
         if self.basis == 'monomials':
-            monomials = [1,
-                         t,
-                         t**2,
-                         t**3,
-                         t**4,
-                         t**5,
-                         t**6,
-                         t**7]
-            basis = monomials[0:self.traj_degree]
+            monomials = np.array([
+                [1, 0, 0, 0, 0, 0, 0, 0],
+                [0, 1, 0, 0, 0, 0, 0, 0],
+                [0, 0, 1, 0, 0, 0, 0, 0],
+                [0, 0, 0, 1, 0, 0, 0, 0],
+                [0, 0, 0, 0, 1, 0, 0, 0],
+                [0, 0, 0, 0, 0, 1, 0, 0],
+                [0, 0, 0, 0, 0, 0, 1, 0],
+                [0, 0, 0, 0, 0, 0, 0, 1]
+            ])
+            b_mat = monomials[0:coefficient_num, 0:coefficient_num]
         elif self.basis == 'legendre':
-            shifted_legendre = [1,
-                                2*t - 1,
-                                6*t**2 - 6*t + 1,
-                                (20*t**3 - 30*t**2 + 12*t - 1)/5,
-                                (70*t**4 - 140*t**3 + 90*t**2 - 20*t + 1)/10,
-                                (252*t**5 - 630*t**4 + 560*t**3 - 210*t**2 + 30*t - 1)/50,
-                                (924*t**6 - 2772*t**5 + 3150*t**4 - 1680*t**3 + 420*t**2 - 42*t + 1)/100,
-                                (3432*t**7 - 12012*t**6 + 16632*t**5 - 11550*t**4 + 4200*t**3 - 756*t**2 + 56*t - 1)/1000]
-            basis = shifted_legendre[0:self.traj_degree]
+            shifted_legendre = np.array([
+                [      1,       0,         0,         0,           0,          0,           0,         0],
+                [     -1,       2,         0,         0,           0,          0,           0,         0],
+                [      1,      -6,         6,         0,           0,          0,           0,         0],
+                [   -1/5,    12/5,     -30/5,      20/5,           0,          0,           0,         0],
+                [   1/10,  -20/10,     90/10,   -140/10,       70/10,          0,           0,         0],
+                [  -1/50,   30/50,   -210/50,    560/50,     -630/50,     252/50,           0,         0],
+                [  1/100, -42/100,   420/100, -1680/100,    3150/100,  -2772/100,     924/100,         0],
+                [-1/1000, 56/1000, -765/1000, 4200/1000, -11550/1000, 16632/1000, -12012/1000, 3432/1000]
+            ])
+            b_mat = shifted_legendre[0:coefficient_num, 0:coefficient_num]
         else:
             print('Invalid basis name')
 
-        t.set_value(0)
-        basis_t0 = map(lambda x : pyo.value(x), basis)
-        t.set_value(1)
-        basis_t1 = map(lambda x : pyo.value(x), basis)
+        print('b_mat')
+        print(b_mat)
 
+        # Find basis at t=0 and t=1.
+        basis_t0 = np.matmul(b_mat, [1, 0, 0, 0, 0, 0, 0, 0][0:coefficient_num])
+        basis_t1 = np.matmul(b_mat, [1, 1, 1, 1, 1, 1, 1, 1][0:coefficient_num])
+
+        print('basis_t0')
         print(basis_t0)
+        print('basis_t1')
         print(basis_t1)
+
+        return
 
         a = range(0, self.num_traj_segments)
         b = range(0, self.traj_degree+1)
@@ -256,9 +290,11 @@ class MisosTrajectoryProblem:
 if __name__ == "__main__":
     problem = MisosTrajectoryProblem();
     problem.solve_trajectory(np.array([
-        [0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0]
     ]), np.array([
-        [1, 1]
+        [1, 1, 1, 1, 1, 1],
+        [1, 1, 1, 1, 1, 1]
     ]), np.array([
         
     ]))
