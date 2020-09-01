@@ -11,10 +11,10 @@ class MisosTrajectoryProblem:
     """Conversion of matlab class to python."""
 
     def __init__(self):  # noqa: D107
-        self.traj_degree = 3
-        self.num_traj_segments = 6
+        self.traj_degree = 3 # degree of polynomial used
+        self.num_traj_segments = 6 # number of segments in the path
         self.bot_radius = 0
-        self.basis = 'legendre'
+        self.basis = 'legendre' # set of basis polynomials to use
         self.dt = 0.5
         self.debug = False
 
@@ -102,6 +102,49 @@ class MisosTrajectoryProblem:
         print(basis_t0)
         print('basis_t1')
         print(basis_t1)
+
+        # === Setup Derivative Coefficients ===
+        # This part is very different from how the matlab source does it.
+        # Here a single derivative list for the basis coefficient matrix is created.
+        # These derivative coefficients can be combined with pyomo variables to generate the correct coefficient expressions.
+
+        # j - 0..path segments
+        # C - coefficients for each path segment: array path segments long, of array dimensions long, of vector of coefficients
+        # coefficient vectors for each segement for each dimension
+        # X - C * basis, is coefficients using basis polynomials
+        # Xd - coefficients of derivatives of each polynomial
+
+        # differentiation matrix used to generate derivatives of polynomials in the monomial basis: coef_mat * [1 t t^2 t^3 ...]
+        # another basis can also be used by grouping the basis matrix with the coefficients in the basis: (coef_mat * b_mat) * [1 t t^2 t^3 ...]
+        # coef_mat * derivative_mat * [1 t t^2 t^3 ...] is the derivative of the polynomial coef_mat * [1 t t^2 t^3 ...]
+        poly_derivative = np.array([
+            [0, 0, 0, 0, 0, 0, 0, 0],
+            [1, 0, 0, 0, 0, 0, 0, 0],
+            [0, 2, 0, 0, 0, 0, 0, 0],
+            [0, 0, 3, 0, 0, 0, 0, 0],
+            [0, 0, 0, 4, 0, 0, 0, 0],
+            [0, 0, 0, 0, 5, 0, 0, 0],
+            [0, 0, 0, 0, 0, 6, 0, 0],
+            [0, 0, 0, 0, 0, 0, 7, 0],
+        ])
+        derivative_mat = poly_derivative[0:coefficient_num, 0:coefficient_num]
+        
+        # generates the k first derivatives of the polynomial with given coefficients
+        def derivatives(poly_coef, num):
+            poly_coef_deriv = poly_coef
+            for _ in range(num):
+                poly_coef_deriv = np.matmul(poly_coef_deriv, derivative_mat)
+                yield poly_coef_deriv
+
+        print('derivative_mat')
+        print(derivative_mat)
+
+        # array of derivatives for the basis, C[k] is the kth derivative
+        Cd = [x for x in derivatives(b_mat, self.traj_degree)]
+
+        print('Cd')
+        print(Cd)
+
 
         return
 
