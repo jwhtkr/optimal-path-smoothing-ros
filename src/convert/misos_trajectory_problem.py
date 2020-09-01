@@ -4,6 +4,7 @@ from __future__ import division
 # cspell: disable
 """Implement the MISOSTrajectoryProblem.m in python with pyomo."""
 import pyomo.environ as pyo
+import pyomo.core.expr.current as expr
 import pyomo
 import numpy as np
 
@@ -145,51 +146,53 @@ class MisosTrajectoryProblem:
         print('Cd')
         print(Cd)
 
+        # find derivatives of basis at t=0 and t=1
+        basis_derivatives_t0 = [np.matmul(x, [1, 0, 0, 0, 0, 0, 0, 0][0:coefficient_num]) for x in derivatives(b_mat, self.traj_degree)]
+        basis_derivatives_t1 = [np.matmul(x, [1, 1, 1, 1, 1, 1, 1, 1][0:coefficient_num]) for x in derivatives(b_mat, self.traj_degree)]
+
+        # === Create Pyomo Model ===
+
+        # contains all elements that will be considered by the model
+        model = pyo.ConcreteModel()
+
+        # === Create Variable Coefficient Matrix ===
+
+        # Matrix of polynomial coefficients, C[a, b, c] is the a-th segment, b-th dimension, c-th coefficient
+        a = range(self.num_traj_segments) # range of segments
+        b = range(dim) # range of dimensions
+        c = range(coefficient_num) # range of coefficients
+        model.C = pyo.Var(a, b, c, within=pyo.Reals)
+
+        # === Create Constraints ===
+        # because pyomo does not support matrix operations, the following implements the matrix multiplications directly
+
+        k = range(self.traj_degree) # range of derivatives
+
+        # constrain the initial position using given start
+        # performs the matrix multiplication: model.C * basis_0t == start[:, 0]
+        def init_constraint(model, b):
+            return expr.SumExpression([model.C[0, b, i] * basis_t0[i] for i in c]) == start[b, 0]
+        # 1 constant for each dimension
+        model.init_constraints = pyo.Constraint(b, rule=init_constraint)
+
+        # constrain the initial derivatives using given start
+        def init_derivative_constraint(model, k, b):
+            return expr.SumExpression([model.C[0, b, i] * basis_derivatives_t0[k][i] for i in c]) == start[b, k+1]
+        model.init_derivative_constraints = pyo.Constraint(k, b, rule=init_derivative_constraint)
+
+        # constrain the final position using given start
+        # performs the matrix multiplication: model.C * basis_1t == goal[:, 0]
+        def final_constraint(model, b):
+            return expr.SumExpression([model.C[self.num_traj_segments-1, b, i] * basis_t1[i] for i in c]) == goal[b, 0]
+        # 1 constant for each dimension
+        model.final_constraints = pyo.Constraint(b, rule=final_constraint)
+
+        # constrain the final derivatives using given start
+        def final_derivative_constraint(model, k, b):
+            return expr.SumExpression([model.C[self.num_traj_segments-1, b, i] * basis_derivatives_t1[k][i] for i in c]) == goal[b, k+1]
+        model.final_derivative_constraints = pyo.Constraint(k, b, rule=final_derivative_constraint)
 
         return
-
-        a = range(0, self.num_traj_segments)
-        b = range(0, self.traj_degree+1)
-        c = range(0, dim)
-        model.c = pyo.Var(a, b, c, within=pyo.Reals)
-
-        # j - polynomial piece j
-        # k - kth derivative
-        # i - ith dimension?
-        def gen_x(model, j, k, i):
-            #? X{j} = C{j}'*basis
-            return model.c[j, k, i] * basis[i]
-        model.x = pyo.Expression(a, b, c, rule=gen_x)
-
-        # i am not sure if this is correct for the jacobian
-        def gen_xd(model, j, k, i):
-            #? Xd{j} = {jacobian(X{j}, t)}
-            return pyo.differentiate(model.x[j, k, i], wrt=t, mode=pyomo.core.expr.calculus.derivatives.Modes.sympy)
-        model.xd = pyo.Expression(a, b, c, rule=gen_xd)
-
-        # need Cd, created using coefficients(...) from xd
-        
-
-
-        x0 = start[:, 1]
-        xf = goal[:, 1]
-
-        # I don't think this does the same as the matlab
-        def gen_init_c(model, j, k, i):
-            if j == 0:
-                return model.c[0, k, i] * basis_t0[i] == start[i, j]
-            else:
-                return model.cd[0, j-1, k, i] * 1 == start[i, j]
-        model.init_c = pyo.Constraint(a, b, c, rule=gen_init_c)
-
-        # I don't think this does the same as the matlab
-        def gen_final_c(model, j, k, i):
-            if j == 0:
-                return model.c[self.num_traj_segments, k, i] * basis_t1[i] == goal[i, j]
-            else:
-                return model.cd[self.num_traj_segments, j-1, k, i] * 1 == goal[i, j]
-        model.final_c = pyo.Constraint(a, b, c, rule=gen_init_c)
-
 
         region = []
         for j in range(0, len(safe_region_sets)):  # Convert to pythonic for loop (for safe_region_set in safe_region_sets: ...)
