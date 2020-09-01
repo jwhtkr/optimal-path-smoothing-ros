@@ -3,6 +3,7 @@ from __future__ import division
 
 # cspell: disable
 """Implement the MISOSTrajectoryProblem.m in python with pyomo."""
+import mosek
 import pyomo.environ as pyo
 import pyomo.core.expr.current as expr
 import pyomo
@@ -166,7 +167,7 @@ class MisosTrajectoryProblem:
         # === Create Constraints ===
         # because pyomo does not support matrix operations, the following implements the matrix multiplications directly
 
-        k = range(self.traj_degree) # range of derivatives
+        k = range(start.shape[1]-1) # range of constrained derivatives
 
         # constrain the initial position using given start
         # performs the matrix multiplication: model.C * basis_0t == start[:, 0]
@@ -191,6 +192,17 @@ class MisosTrajectoryProblem:
         def final_derivative_constraint(model, k, b):
             return expr.SumExpression([model.C[self.num_traj_segments-1, b, i] * basis_derivatives_t1[k][i] for i in c]) == goal[b, k+1]
         model.final_derivative_constraints = pyo.Constraint(k, b, rule=final_derivative_constraint)
+
+        # test objective function, sum all coefficients in all polynomials
+        model.obj = pyo.Objective(expr = expr.SumExpression([model.C[i, j, k] for i in a for j in b for k in c]))
+
+        # test solve using mosek as solver
+        opt = pyomo.opt.SolverFactory('mosek')
+        opt.solve(model)
+
+        print(model.C.get_values())
+
+        print("done")
 
         return
 
@@ -335,12 +347,13 @@ class MisosTrajectoryProblem:
 
 if __name__ == "__main__":
     problem = MisosTrajectoryProblem();
+    problem.num_traj_segments = 1
+    problem.traj_degree = 5
+    problem.basis = 'monomials'
     problem.solve_trajectory(np.array([
-        [0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0]
+        [2, -4, 0.6],
     ]), np.array([
-        [1, 1, 1, 1, 1, 1],
-        [1, 1, 1, 1, 1, 1]
+        [-1, -3.4, 0.6],
     ]), np.array([
         
     ]))
