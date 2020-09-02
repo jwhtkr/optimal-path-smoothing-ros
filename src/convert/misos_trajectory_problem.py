@@ -96,15 +96,6 @@ class MisosTrajectoryProblem:
         print('b_mat')
         print(b_mat)
 
-        # Find basis at t=0 and t=1.
-        basis_t0 = np.matmul(b_mat, [1, 0, 0, 0, 0, 0, 0, 0][0:coefficient_num])
-        basis_t1 = np.matmul(b_mat, [1, 1, 1, 1, 1, 1, 1, 1][0:coefficient_num])
-
-        print('basis_t0')
-        print(basis_t0)
-        print('basis_t1')
-        print(basis_t1)
-
         # === Setup Derivative Coefficients ===
         # This part is very different from how the matlab source does it.
         # Here a single derivative list for the basis coefficient matrix is created.
@@ -131,12 +122,12 @@ class MisosTrajectoryProblem:
         ])
         derivative_mat = poly_derivative[0:coefficient_num, 0:coefficient_num]
         
-        # generates the k first derivatives of the polynomial with given coefficients
+        # generates the k first derivatives including the 0th derivative of the polynomial with given coefficients
         def derivatives(poly_coef, num):
             poly_coef_deriv = poly_coef
-            for _ in range(num):
-                poly_coef_deriv = np.matmul(poly_coef_deriv, derivative_mat)
+            for _ in range(num+1):
                 yield poly_coef_deriv
+                poly_coef_deriv = np.matmul(poly_coef_deriv, derivative_mat)
 
         print('derivative_mat')
         print(derivative_mat)
@@ -150,6 +141,11 @@ class MisosTrajectoryProblem:
         # find derivatives of basis at t=0 and t=1
         basis_derivatives_t0 = [np.matmul(x, [1, 0, 0, 0, 0, 0, 0, 0][0:coefficient_num]) for x in derivatives(b_mat, self.traj_degree)]
         basis_derivatives_t1 = [np.matmul(x, [1, 1, 1, 1, 1, 1, 1, 1][0:coefficient_num]) for x in derivatives(b_mat, self.traj_degree)]
+
+        print('basis_derivatives_t0')
+        print(basis_derivatives_t0)
+        print('basis_derivatives_t1')
+        print(basis_derivatives_t1)
 
         # === Create Pyomo Model ===
 
@@ -167,32 +163,24 @@ class MisosTrajectoryProblem:
         # === Create Constraints ===
         # because pyomo does not support matrix operations, the following implements the matrix multiplications directly
 
-        k = range(start.shape[1]-1) # range of constrained derivatives
+        k = range(start.shape[1]) # range of constrained derivatives
 
-        # constrain the initial position using given start
-        # performs the matrix multiplication: model.C * basis_0t == start[:, 0]
-        def init_constraint(model, b):
-            return expr.SumExpression([model.C[0, b, i] * basis_t0[i] for i in c]) == start[b, 0]
-        # 1 constant for each dimension
-        model.init_constraints = pyo.Constraint(b, rule=init_constraint)
-
-        # constrain the initial derivatives using given start
+        # constrain the initial position and derivatives using given start
+        # performs the matrix multiplication for each derivative: model.C * basis_0t == start[:, 0]
         def init_derivative_constraint(model, k, b):
-            return expr.SumExpression([model.C[0, b, i] * basis_derivatives_t0[k][i] for i in c]) == start[b, k+1]
+            return expr.SumExpression([model.C[0, b, i] * basis_derivatives_t0[k][i] for i in c]) == start[b, k]
         model.init_derivative_constraints = pyo.Constraint(k, b, rule=init_derivative_constraint)
 
-        # constrain the final position using given start
-        # performs the matrix multiplication: model.C * basis_1t == goal[:, 0]
-        def final_constraint(model, b):
-            return expr.SumExpression([model.C[self.num_traj_segments-1, b, i] * basis_t1[i] for i in c]) == goal[b, 0]
-        # 1 constant for each dimension
-        model.final_constraints = pyo.Constraint(b, rule=final_constraint)
-
-        # constrain the final derivatives using given start
+        # constrain the final position and derivatives using given start
+        # performs the matrix multiplication for each derivative: model.C * basis_1t == goal[:, 0]
         def final_derivative_constraint(model, k, b):
-            return expr.SumExpression([model.C[self.num_traj_segments-1, b, i] * basis_derivatives_t1[k][i] for i in c]) == goal[b, k+1]
+            return expr.SumExpression([model.C[self.num_traj_segments-1, b, i] * basis_derivatives_t1[k][i] for i in c]) == goal[b, k]
         model.final_derivative_constraints = pyo.Constraint(k, b, rule=final_derivative_constraint)
 
+        
+
+        # === Run Program ===
+        
         # test objective function, sum all coefficients in all polynomials
         model.obj = pyo.Objective(expr = expr.SumExpression([model.C[i, j, k] for i in a for j in b for k in c]))
 
@@ -200,6 +188,7 @@ class MisosTrajectoryProblem:
         opt = pyomo.opt.SolverFactory('mosek')
         opt.solve(model)
 
+        print('values')
         print(model.C.get_values())
 
         print("done")
@@ -351,9 +340,9 @@ if __name__ == "__main__":
     problem.traj_degree = 5
     problem.basis = 'monomials'
     problem.solve_trajectory(np.array([
-        [2, -4, 0.6],
+        [2, 1],
     ]), np.array([
-        [-1, -3.4, 0.6],
+        [2, 1],
     ]), np.array([
         
     ]))
