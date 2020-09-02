@@ -361,7 +361,7 @@ class ImplicationInequalityAggregateConstraint(BinaryInequalityConstraint):
 
 class BinaryLinearEqualityConstraint(BinaryEqualityConstraint):
     """
-    Represent a constraint linear in state, control, and binary variables.
+    Represent an equality constraint linear in the variables.
 
     The constraint value is determined with 3 matrices, A, B, and C as
     Ax + Bu + Ca, where x is state, u is control, and a is binary variables.
@@ -396,4 +396,43 @@ class BinaryLinearEqualityConstraint(BinaryEqualityConstraint):
     def constraint(self, t, state, ctrl, binary):
         """See base class."""
         a_mat, b_mat, c_mat = self.eq_mats(t)
+        return a_mat @ state + b_mat @ ctrl + c_mat @ binary
+
+class BinaryLinearInequalityConstraint(BinaryInequalityConstraint):
+    """
+    Represent an inequality constraint linear the variables.
+
+    The constraint value is determined with 3 matrices, A, B, and C as
+    Ax + Bu + Ca, where x is state, u is control, and a is binary variables.
+
+    Attributes
+    ----------
+    See base class for additional attributes.
+    ineq_mats : function
+        A function of time that returns a tuple of matrices (either
+        numpy.ndarray or scipy.sparse.spmatrix) that are, in order, the A, B,
+        and C matrices of the constraint value Ax + Bu + Ca.
+
+
+    Parameters
+    ----------
+    See base class for additional parameters.
+    eq_mats : function
+        A function of time that returns a tuple of matrices (either
+        numpy.ndarray or scipy.sparse.spmatrix) that are, in order, the A, B,
+        and C matrices of the constraint value Ax + Bu + Ca.
+
+    """
+
+    def __init__(self, ineq_mats, bound):  # noqa: D107
+        a_mat, b_mat, c_mat = ineq_mats(0)
+        n_binary = c_mat.shape[1]
+        n_state = a_mat.shape[1]
+        n_ctrl = b_mat.shape[1]
+        super().__init__(n_binary, n_state, n_ctrl, bound)
+        self.ineq_mats = ineq_mats
+
+    def constraint(self, t, state, ctrl, binary):
+        """See base class."""
+        a_mat, b_mat, c_mat = self.ineq_mats(t)
         return a_mat @ state + b_mat @ ctrl + c_mat @ binary

@@ -37,6 +37,8 @@ KEY_FRAME_STEP = 10
 
 CREATE_FREE_REGIONS = False
 
+WARM_START = False
+
 Point = collections.namedtuple("Point", ["x", "y"])
 
 OBSTACLE_MIDDLE = {"bl": Point(12.5, 7.),
@@ -103,10 +105,10 @@ CORRIDOR_WORLD_STRAIGHT_WITH_OBSTACLE_EARLY = {1: ((-2., -2., OBSTACLE_EARLY["bl
                                                    (-8., -4., -4., -8.))}
 
 
-# WORLD = CORRIDOR_WORLD_STRAIGHT_WITH_OBSTACLE_EARLY
-WORLD = CORRIDOR_WORLD_STRAIGHT
+WORLD = CORRIDOR_WORLD_STRAIGHT_WITH_OBSTACLE_EARLY
+# WORLD = CORRIDOR_WORLD_STRAIGHT
 
-END_IDX = 1500
+END_IDX = 4515
 
 SmoothingArguments = collections.namedtuple("SmoothingArguments",
                                             ["constraints",
@@ -250,10 +252,12 @@ def smooth_obstacles_mip(desired_path, q_mat, r_mat, s_mat, a_cnstr_mat,
                                                 args.cost, args.solver,
                                                 args.n_step, args.initial_state,
                                                 time_step=args.time_step)
-
-    return smoother.solve(warm_start=(desired_path.flatten(order="F"),
-                                      np.zeros((args.n_dim*(args.n_step-1),)),
-                                      args.bin_vec))
+    if WARM_START:
+        return smoother.solve(warm_start=(desired_path.flatten(order="F"),
+                                          np.zeros((args.n_dim*(args.n_step-1),)),
+                                          args.bin_vec))
+    else:
+        return smoother.solve()
 
 def _setup_obstacles_mip(desired_path, q_mat, r_mat, s_mat, a_cnstr_mat,
                          b_cnstr_mat, free_regions, time_step):

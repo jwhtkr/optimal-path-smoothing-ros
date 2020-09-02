@@ -320,22 +320,22 @@ class SmoothPathLinearObstaclesMip(SmoothPathLinear):
         sel_mat_agg = sparse.block_diag(sel_mats)
         ones_mat_agg = sparse.block_diag(ones_mats)
 
-        eq_mat_func = lambda t: (sparse.csr_matrix((self.n_step,
-                                                    self.n_step*self.n_dim*self.n_smooth)),
-                                 sparse.csr_matrix((self.n_step, (self.n_step-1)*self.n_dim)),
-                                 ones_mat_agg)
-        eq_val_func = lambda t: np.ones((self.n_step, 1))
+        ineq_mat_func = lambda t: (sparse.csr_matrix((self.n_step,
+                                                      self.n_step*self.n_dim*self.n_smooth)),
+                                   sparse.csr_matrix((self.n_step, (self.n_step-1)*self.n_dim)),
+                                   - ones_mat_agg)
+        ineq_val_func = lambda t: - np.ones((self.n_step, 1))
 
         imp_agg_constr = self.imp_ineq_agg_constr(ineq_mats=lambda t: (a_mat_agg,
                                                                        b_mat_agg),
                                                   b_vec=lambda t: b_vec_agg,
                                                   m_mat=lambda t: m_mat_agg,
                                                   sel_mat=sel_mat_agg)
-        bin_sum_constr = bin_constr.BinaryLinearEqualityConstraint(eq_mat_func,
-                                                                   eq_val_func)
+        bin_sum_constr = bin_constr.BinaryLinearInequalityConstraint(ineq_mat_func,
+                                                                     ineq_val_func)
 
-        constraints = constrs.Constraints(eq_constraints=[bin_sum_constr],
-                                          ineq_constraints=[imp_agg_constr],
+        constraints = constrs.Constraints(ineq_constraints=[imp_agg_constr,
+                                                            bin_sum_constr],
                                           constraints=non_binary_constrs)
         return constraints
 

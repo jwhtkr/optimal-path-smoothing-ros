@@ -208,8 +208,12 @@ class Gurobi(solver.Solver):
         else:
             return None
 
-    def _warm_start(self, warm_start_vec):
+    def _warm_start(self, warm_start):
         """Warm start the optimization model."""
-        del warm_start_vec
-        print("Warm start is currently not available. Solving without warm "
-              + "start.")
+        # del warm_start
+        # print("Warm start is currently not available. Solving without warm "
+        #       + "start.")
+        x_vec, u_vec, bin_vec = warm_start
+        self.x_vec.PStart = x_vec
+        self.u_vec.PStart = u_vec
+        self.bin_vec.Start = bin_vec
