@@ -132,11 +132,11 @@ class MisosTrajectoryProblem:
         print('derivative_mat')
         print(derivative_mat)
 
-        # array of derivatives for the basis, C[k] is the kth derivative
-        Cd = [x for x in derivatives(b_mat, self.traj_degree)]
-
-        print('Cd')
-        print(Cd)
+        # # array of derivatives for the basis, C[k] is the kth derivative
+        # Cd = [x for x in derivatives(b_mat, self.traj_degree)]
+        #
+        # print('Cd')
+        # print(Cd)
 
         # find derivatives of basis at t=0 and t=1
         basis_derivatives_t0 = [np.matmul(x, [1, 0, 0, 0, 0, 0, 0, 0][0:coefficient_num]) for x in derivatives(b_mat, self.traj_degree)]
@@ -163,21 +163,27 @@ class MisosTrajectoryProblem:
         # === Create Constraints ===
         # because pyomo does not support matrix operations, the following implements the matrix multiplications directly
 
-        k = range(start.shape[1]) # range of constrained derivatives
-
         # constrain the initial position and derivatives using given start
         # performs the matrix multiplication for each derivative: model.C * basis_0t == start[:, 0]
+        k = range(start.shape[1]) # range of constrained derivatives
         def init_derivative_constraint(model, k, b):
             return expr.SumExpression([model.C[0, b, i] * basis_derivatives_t0[k][i] for i in c]) == start[b, k]
         model.init_derivative_constraints = pyo.Constraint(k, b, rule=init_derivative_constraint)
 
         # constrain the final position and derivatives using given start
         # performs the matrix multiplication for each derivative: model.C * basis_1t == goal[:, 0]
+        k = range(goal.shape[1]) # range of constrained derivatives
         def final_derivative_constraint(model, k, b):
             return expr.SumExpression([model.C[self.num_traj_segments-1, b, i] * basis_derivatives_t1[k][i] for i in c]) == goal[b, k]
         model.final_derivative_constraints = pyo.Constraint(k, b, rule=final_derivative_constraint)
 
-        
+        # enforce the continuity of the derivatives
+        k = range(self.traj_degree) # range of all derivatives except the final one
+        def continuity_constraint(model, a, k, b):
+            return (expr.SumExpression([model.C[a, b, i] * basis_derivatives_t1[k][i] for i in c])
+                == expr.SumExpression([model.C[a+1, b, i] * basis_derivatives_t0[k][i] for i in c]))
+        model.continuity_constraints = pyo.Constraint(range(self.num_traj_segments - 1), k, b, rule=continuity_constraint)
+
 
         # === Run Program ===
         
@@ -336,8 +342,8 @@ class MisosTrajectoryProblem:
 
 if __name__ == "__main__":
     problem = MisosTrajectoryProblem();
-    problem.num_traj_segments = 1
-    problem.traj_degree = 5
+    problem.num_traj_segments = 3
+    problem.traj_degree = 1
     problem.basis = 'monomials'
     problem.solve_trajectory(np.array([
         [2, 1],
