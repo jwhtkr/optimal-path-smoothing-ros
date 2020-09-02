@@ -20,8 +20,12 @@ class MisosTrajectoryProblem:
         self.dt = 0.5
         self.debug = False
 
-    def solve_trajectory(self, start, goal, safe_region_sets, safe_region_assignments=()):
+    def solve_trajectory(self, start, goal, safe_regions):
         """Solve for a trajectory."""
+
+        # start - array of dimensions, of derivative constraints. (starts with position)
+        # goal - array of dimensions, of derivative constraints. (starts with position)
+        # safe_regions - array of A b matrx objects
 
         # 2D position: start = [[px], [py]]
         # 2D position, velocity: start = [[px, vx], [py, vy]]
@@ -160,7 +164,7 @@ class MisosTrajectoryProblem:
         c = range(coefficient_num) # range of coefficients
         model.C = pyo.Var(a, b, c, within=pyo.Reals)
 
-        # === Create Constraints ===
+        # === Basic Constraints ===
         # because pyomo does not support matrix operations, the following implements the matrix multiplications directly
 
         # constrain the initial position and derivatives using given start
@@ -177,13 +181,25 @@ class MisosTrajectoryProblem:
             return expr.SumExpression([model.C[self.num_traj_segments-1, b, i] * basis_derivatives_t1[k][i] for i in c]) == goal[b, k]
         model.final_derivative_constraints = pyo.Constraint(k, b, rule=final_derivative_constraint)
 
-        # enforce the continuity of the derivatives
+        # enforce the continuity of the derivatives between segments
+        # performs the matrix multiplication for each derivative: model.C * basis_1t == model.C * basis_0t
         k = range(self.traj_degree) # range of all derivatives except the final one
         def continuity_constraint(model, a, k, b):
             return (expr.SumExpression([model.C[a, b, i] * basis_derivatives_t1[k][i] for i in c])
                 == expr.SumExpression([model.C[a+1, b, i] * basis_derivatives_t0[k][i] for i in c]))
         model.continuity_constraints = pyo.Constraint(range(self.num_traj_segments - 1), k, b, rule=continuity_constraint)
 
+        # == Region Assignments ===
+        # simplified from the matlab to always use pyomo variables for the complete H matrix as in the paper
+
+        # creates variables for assigning each polynomial for each dimension to a single region
+        r = range(len(safe_regions)) # range of all safe regions
+        model.region = pyo.Var(a, b, r, within=pyo.Binary)
+
+        # constrain each polynomial to be assigned to a single region
+        def single_region_constraint(model, a, b):
+            return expr.SumExpression([model.region[a, b, x] for x in r]) == 1
+        model.single_region_constraints = pyo.Constraint(a, b, rule=single_region_constraint)
 
         # === Run Program ===
         
@@ -200,28 +216,6 @@ class MisosTrajectoryProblem:
         print("done")
 
         return
-
-        region = []
-        for j in range(0, len(safe_region_sets)):  # Convert to pythonic for loop (for safe_region_set in safe_region_sets: ...)
-            if safe_region_sets[j].len > 1:
-                if is_empty(cell_2_mat(safe_region_assignments)):  # python should probably be `if not safe_region_assignments: ...`
-                    # binvar(...) -> pyomo.Var(..., within=pyomo.Boolean) https://yalmip.github.io/command/binvar/
-                    region[j] = binvar(safe_region_sets[j].len, self.num_traj_segments, 'full')
-                    constraints.append(sum(region[j], 1) == 1)  # constraints = [constraints, sum(region[j], 1) == 1]
-                else:
-                    region[j] = safe_region_assignments[j]
-            else:
-                # true(n1, n2, ...) is matlab-ese for make an array of all
-                # `True` of shape (n1, n2, ...)
-                region[j] = true(1, self.num_traj_segments)
-
-        for j in range(0, self.num_traj_segments-1):
-            constraints.append(c[j] * basis_t1 == c[j+1] * basis_t0)  # constraints = [constraints, c[j] * basis_t1 == c[j+1] * basis_t0]
-            for d in range(0, self.traj_degree-1):
-                constraints.append(cd[j][d] * [1, np.ones((self.traj_degree, 1))]
-                                   == cd[j+1][d] * [1, np.zeros((self.traj_degree, 1))])
-                # constraints = [constraints,
-                #         cd[j][d] * [1, ones(self.traj_degree, 1)] == cd[j+1][d] * [1, zeros(self.traj_degree, 1)]]
 
         objective = 0
 
