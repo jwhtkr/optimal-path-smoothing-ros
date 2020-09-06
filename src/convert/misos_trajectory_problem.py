@@ -241,7 +241,20 @@ class MisosTrajectoryProblem:
             model.obj = pyo.Objective(expr = obj_fn)
         elif self.traj_degree == 5:
             # minimize 4th derivative
-            obj_fn = 0.01*expr.SumExpression([expr.SumExpression([model.C[i, j, l] * Cd[4][l, k] for l in c])**2 for i in a for j in b for k in c])
+            # obj_fn = 0.01*expr.SumExpression([expr.SumExpression([model.C[i, j, l] * Cd[4][l, k] for l in c])**2 for i in a for j in b for k in c])
+
+            def obj_fn_gen(segments, dimensions, coefficients):
+                # find messure for 4th derivative
+                for s in range(segments):
+                    for d in range(dimensions):
+                        # find 4th and 5th coefficients
+                        c4 = expr.SumExpression([model.C[s, d, c] * Cd[0][c, 4] for c in range(coefficients)])
+                        c5 = expr.SumExpression([model.C[s, d, c] * Cd[0][c, 5] for c in range(coefficients)])
+                        # combine c4 and c5 into messure
+                        yield (24*c4)**2 + 1/2*2*(24*c4)*(120*c5) + 1/3*(120*c5)**2
+
+            obj_fn = 0.01*expr.SumExpression([x for x in obj_fn_gen(self.num_traj_segments, dim, coefficient_num)])
+
             print('')
             print('obj_fn')
             print(obj_fn)
@@ -266,13 +279,18 @@ class MisosTrajectoryProblem:
         print(pyo.value(obj_fn))
 
         # plot found solution
-
+        
         for l in a:
-            coeffs = [model.C[l, 0, x].value for x in c]
-            x = np.linspace(0, 1, 100)
-            y = np.array([np.sum(np.array([coeffs[i]*(j**i) for i in range(len(coeffs))])) for j in x])
-            x = np.linspace(l, l+1, 100)
-            plt.plot(x, y)
+            for d in b:
+                colors = ['b', 'g', 'r', 'c', 'm', 'y']
+                for dx in reversed(range(self.traj_degree+1)):
+                    coeffs = [pyo.value(expr.SumExpression([model.C[l, d, i].value * Cd[dx][i, x] for i in c])) for x in c]
+                    x = np.linspace(0, 1, 100)
+                    y = np.array([np.sum(np.array([coeffs[i]*(j**i) for i in range(len(coeffs))])) for j in x])
+                    x = np.linspace(l, l+1, 100)
+                    plt.plot(x, y, colors[dx], label=str(dx)+"th derivative")
+
+        plt.legend()
         plt.show()
 
         print("done")
@@ -386,15 +404,17 @@ class MisosTrajectoryProblem:
 
 if __name__ == "__main__":
     problem = MisosTrajectoryProblem();
-    problem.num_traj_segments = 5
-    problem.traj_degree = 3
-    problem.basis = 'monomials'
+    problem.num_traj_segments = 10
+    problem.traj_degree = 5
+    # problem.basis = 'monomials'
     problem.solve_trajectory(np.array([
         # [-2.4, -2.4],
-        [-2.4, 0.],
+        # [-1, 0.],
+        [-2, 1, 0],
     ]), np.array([
         # [-3.2, 0.5],
-        [-3.2, 0.],
+        # [-3, 0.],
+        [1, -1, 0],
     ]), np.array([
         
     ]))
