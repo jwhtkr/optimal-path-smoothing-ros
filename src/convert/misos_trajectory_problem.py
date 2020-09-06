@@ -8,6 +8,7 @@ import pyomo.environ as pyo
 import pyomo.core.expr.current as expr
 import pyomo
 import numpy as np
+import matplotlib.pyplot as plt
 
 class MisosTrajectoryProblem:
     """Conversion of matlab class to python."""
@@ -20,7 +21,7 @@ class MisosTrajectoryProblem:
         self.dt = 0.5
         self.debug = False
 
-    def solve_trajectory(self, start, goal, safe_regions):
+    def solve_trajectory(self, start, goal, safe_regions, safe_region_assignments=None):
         """Solve for a trajectory."""
 
         # start - array of dimensions, of derivative constraints. (starts with position)
@@ -37,6 +38,7 @@ class MisosTrajectoryProblem:
 
         # number of coefficients in the polynomial
         coefficient_num = self.traj_degree + 1
+        print('')
         print('coefficient_num')
         print(coefficient_num)
 
@@ -61,8 +63,10 @@ class MisosTrajectoryProblem:
         if goal.shape[0] != dim:
             print('Goal and start have different dimensions.')
 
+        print('')
         print('start')
         print(start)
+        print('')
         print('goal')
         print(goal)
 
@@ -97,6 +101,7 @@ class MisosTrajectoryProblem:
         else:
             print('Invalid basis name')
 
+        print('')
         print('b_mat')
         print(b_mat)
 
@@ -133,21 +138,25 @@ class MisosTrajectoryProblem:
                 yield poly_coef_deriv
                 poly_coef_deriv = np.matmul(poly_coef_deriv, derivative_mat)
 
+        print('')
         print('derivative_mat')
         print(derivative_mat)
 
         # # array of derivatives for the basis, C[k] is the kth derivative
-        # Cd = [x for x in derivatives(b_mat, self.traj_degree)]
-        #
-        # print('Cd')
-        # print(Cd)
+        Cd = [x for x in derivatives(b_mat, self.traj_degree)]
+
+        print('')
+        print('Cd')
+        print(Cd)
 
         # find derivatives of basis at t=0 and t=1
         basis_derivatives_t0 = [np.matmul(x, [1, 0, 0, 0, 0, 0, 0, 0][0:coefficient_num]) for x in derivatives(b_mat, self.traj_degree)]
         basis_derivatives_t1 = [np.matmul(x, [1, 1, 1, 1, 1, 1, 1, 1][0:coefficient_num]) for x in derivatives(b_mat, self.traj_degree)]
 
+        print('')
         print('basis_derivatives_t0')
         print(basis_derivatives_t0)
+        print('')
         print('basis_derivatives_t1')
         print(basis_derivatives_t1)
 
@@ -170,48 +179,101 @@ class MisosTrajectoryProblem:
         # constrain the initial position and derivatives using given start
         # performs the matrix multiplication for each derivative: model.C * basis_0t == start[:, 0]
         k = range(start.shape[1]) # range of constrained derivatives
+        print('')
+        print('init_derivative_constraints')
         def init_derivative_constraint(model, k, b):
-            return expr.SumExpression([model.C[0, b, i] * basis_derivatives_t0[k][i] for i in c]) == start[b, k]
+            ex = expr.SumExpression([model.C[0, b, i] * basis_derivatives_t0[k][i] for i in c]) == start[b, k]
+            print(ex.to_string())
+            return ex
         model.init_derivative_constraints = pyo.Constraint(k, b, rule=init_derivative_constraint)
 
         # constrain the final position and derivatives using given start
         # performs the matrix multiplication for each derivative: model.C * basis_1t == goal[:, 0]
         k = range(goal.shape[1]) # range of constrained derivatives
+        print('')
+        print('final_derivative_constraints')
         def final_derivative_constraint(model, k, b):
-            return expr.SumExpression([model.C[self.num_traj_segments-1, b, i] * basis_derivatives_t1[k][i] for i in c]) == goal[b, k]
+            ex = expr.SumExpression([model.C[self.num_traj_segments-1, b, i] * basis_derivatives_t1[k][i] for i in c]) == goal[b, k]
+            print(ex.to_string())
+            return ex
         model.final_derivative_constraints = pyo.Constraint(k, b, rule=final_derivative_constraint)
 
         # enforce the continuity of the derivatives between segments
         # performs the matrix multiplication for each derivative: model.C * basis_1t == model.C * basis_0t
         k = range(self.traj_degree) # range of all derivatives except the final one
+        print('')
+        print('continuity_constraints')
         def continuity_constraint(model, a, k, b):
-            return (expr.SumExpression([model.C[a, b, i] * basis_derivatives_t1[k][i] for i in c])
+            ex = (expr.SumExpression([model.C[a, b, i] * basis_derivatives_t1[k][i] for i in c])
                 == expr.SumExpression([model.C[a+1, b, i] * basis_derivatives_t0[k][i] for i in c]))
+            print(ex.to_string())
+            return ex
         model.continuity_constraints = pyo.Constraint(range(self.num_traj_segments - 1), k, b, rule=continuity_constraint)
 
-        # == Region Assignments ===
+        # === Region Assignments ===
         # simplified from the matlab to always use pyomo variables for the complete H matrix as in the paper
 
-        # creates variables for assigning each polynomial for each dimension to a single region
-        r = range(len(safe_regions)) # range of all safe regions
-        model.region = pyo.Var(a, b, r, within=pyo.Binary)
+        # if safe_region_assignments is None:
+        #     # creates variables for assigning each polynomial for each dimension to a single region
+        #     r = range(len(safe_regions)) # range of all safe regions
+        #     model.region = pyo.Var(a, b, r, within=pyo.Binary)
+        #
+        #     # constrain each polynomial to be assigned to a single region
+        #     def single_region_constraint(model, a, b):
+        #         return expr.SumExpression([model.region[a, b, x] for x in r]) == 1
+        #     model.single_region_constraints = pyo.Constraint(a, b, rule=single_region_constraint)
 
-        # constrain each polynomial to be assigned to a single region
-        def single_region_constraint(model, a, b):
-            return expr.SumExpression([model.region[a, b, x] for x in r]) == 1
-        model.single_region_constraints = pyo.Constraint(a, b, rule=single_region_constraint)
+        # === Bound Coefficients ===
+
+        if safe_region_assignments is None:
+            def coefficient_bound_constraint(model, a, b, c):
+                return pyo.inequality(-C_BOUND, model.C[a, b, c], C_BOUND)
+            model.coefficient_bound_constraints = pyo.Constraint(a, b, c, rule=coefficient_bound_constraint)
+
+        # === Objective Function ===
+
+        if self.traj_degree <= 3:
+            # minimize 3rd derivative
+            obj_fn = 0.01*expr.SumExpression([expr.SumExpression([model.C[i, j, l] * Cd[3][l, k] for l in c])**2 for i in a for j in b for k in c])
+            print('')
+            print('obj_fn')
+            print(obj_fn)
+            model.obj = pyo.Objective(expr = obj_fn)
+        elif self.traj_degree == 5:
+            # minimize 4th derivative
+            obj_fn = 0.01*expr.SumExpression([expr.SumExpression([model.C[i, j, l] * Cd[4][l, k] for l in c])**2 for i in a for j in b for k in c])
+            print('')
+            print('obj_fn')
+            print(obj_fn)
+            model.obj = pyo.Objective(expr = obj_fn)
+        else:
+            print("Not implemented yet")
 
         # === Run Program ===
         
         # test objective function, sum all coefficients in all polynomials
-        model.obj = pyo.Objective(expr = expr.SumExpression([model.C[i, j, k] for i in a for j in b for k in c]))
+        # model.obj = pyo.Objective(expr = expr.SumExpression([model.C[i, j, k] for i in a for j in b for k in c]))
 
         # test solve using mosek as solver
         opt = pyomo.opt.SolverFactory('mosek')
         opt.solve(model)
 
+        print('')
         print('values')
         print(model.C.get_values())
+        print('')
+        print('obj_fn')
+        print(pyo.value(obj_fn))
+
+        # plot found solution
+
+        for l in a:
+            coeffs = [model.C[l, 0, x].value for x in c]
+            x = np.linspace(0, 1, 100)
+            y = np.array([np.sum(np.array([coeffs[i]*(j**i) for i in range(len(coeffs))])) for j in x])
+            x = np.linspace(l, l+1, 100)
+            plt.plot(x, y)
+        plt.show()
 
         print("done")
 
@@ -225,18 +287,6 @@ class MisosTrajectoryProblem:
         for j in range(0, self.num_traj_segments):
             sigma[j] = []
             q[j] = []
-            if is_empty(cell_2_mat(safe_region_assignments)):  # `if not safe_region_assignments` probably
-                # This constraint, because it's double-sided, might need to be
-                # split up into two for pyomo.
-                constraints.append(-C_BOUND <= C[j] <= C_BOUND)  # constraints = [constraints, -C_BOUND <= C[j] <= C_BOUND]
-            if self.traj_degree <= 3:
-                for d in range(0, dim):
-                    objective += 0.01 * (cd[j][self.traj_degree][:, d] * cd[j][self.traj_degree][:, d])
-            elif self.traj_degree == 5:
-                c = coefficients(x[j], t).reshape(-1, dim)
-                objective += 0.01 * (sum((math.factorial(4) * c[end-1, :])^2 + 1/2 * 2 * (math.factorial(4) * c[end-1, :]) * (math.factorial(5) * c[end, :]) + 1/3 * (math.factorial(5) * c[end, :])^2))
-            else:
-                print('not implemented yet')
 
             for rs in range(0, region.len):
                 sigma[j][rs] = []
@@ -336,13 +386,15 @@ class MisosTrajectoryProblem:
 
 if __name__ == "__main__":
     problem = MisosTrajectoryProblem();
-    problem.num_traj_segments = 3
-    problem.traj_degree = 1
+    problem.num_traj_segments = 5
+    problem.traj_degree = 3
     problem.basis = 'monomials'
     problem.solve_trajectory(np.array([
-        [2, 1],
+        # [-2.4, -2.4],
+        [-2.4, 0.],
     ]), np.array([
-        [2, 1],
+        # [-3.2, 0.5],
+        [-3.2, 0.],
     ]), np.array([
         
     ]))
