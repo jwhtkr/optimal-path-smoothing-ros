@@ -171,7 +171,7 @@ class MisosTrajectoryProblem:
         a = range(self.num_traj_segments) # range of segments
         b = range(dim) # range of dimensions
         c = range(coefficient_num) # range of coefficients
-        model.C = pyo.Var(a, b, c, within=pyo.Reals)
+        model.C = pyo.Var(a, b, c, within=pyo.Reals, bounds=(-C_BOUND, C_BOUND))
 
         # === Basic Constraints ===
         # because pyomo does not support matrix operations, the following implements the matrix multiplications directly
@@ -211,12 +211,13 @@ class MisosTrajectoryProblem:
         model.continuity_constraints = pyo.Constraint(range(self.num_traj_segments - 1), k, b, rule=continuity_constraint)
 
         # === Region Assignments ===
+        # this is not needed because pyomo has a gdp extension with disjunctions
         # simplified from the matlab to always use pyomo variables for the complete H matrix as in the paper
 
         # if safe_region_assignments is None:
         #     # creates variables for assigning each polynomial for each dimension to a single region
         #     r = range(len(safe_regions)) # range of all safe regions
-        #     model.region = pyo.Var(a, b, r, within=pyo.Binary)
+        #     model.region = pyo.Var(a, b, r, within=pyo.Boolean)
         #
         #     # constrain each polynomial to be assigned to a single region
         #     def single_region_constraint(model, a, b):
@@ -224,17 +225,18 @@ class MisosTrajectoryProblem:
         #     model.single_region_constraints = pyo.Constraint(a, b, rule=single_region_constraint)
 
         # === Bound Coefficients ===
+        # not needed because pyomo can have bounds on variables
 
-        if safe_region_assignments is None:
-            def coefficient_bound_constraint(model, a, b, c):
-                return pyo.inequality(-C_BOUND, model.C[a, b, c], C_BOUND)
-            model.coefficient_bound_constraints = pyo.Constraint(a, b, c, rule=coefficient_bound_constraint)
+        # if safe_region_assignments is None:
+        #     def coefficient_bound_constraint(model, a, b, c):
+        #         return pyo.inequality(-C_BOUND, model.C[a, b, c], C_BOUND)
+        #     model.coefficient_bound_constraints = pyo.Constraint(a, b, c, rule=coefficient_bound_constraint)
 
         # === Objective Function ===
 
         if self.traj_degree <= 3:
             # minimize 3rd derivative
-            obj_fn = 0.01*expr.SumExpression([expr.SumExpression([model.C[i, j, l] * Cd[3][l, k] for l in c])**2 for i in a for j in b for k in c])
+            obj_fn = 0.01*expr.SumExpression([expr.SumExpression([model.C[i, j, l] * Cd[self.traj_degree][l, k] for l in c])**2 for i in a for j in b for k in c])
             print('')
             print('obj_fn')
             print(obj_fn)
@@ -262,13 +264,45 @@ class MisosTrajectoryProblem:
         else:
             print("Not implemented yet")
 
+        # === SOS Constraints ===
+        # if assignments are not given, then use a disjunction of all regions
+        # if assignments are given, then create the constraints from those directly
+        # removed region groups from this implementation
+
+        if safe_region_assignments is None:
+            for s in range(self.num_traj_segments):
+                def region_gen():
+                    for r in range(len(safe_regions)):
+                        dis = pyomo.gdp.Disjunct()
+
+                        A = safe_regions[r]["A"]
+                        b = safe_regions[r]["b"]
+
+                        for k in range(A.shape[0]):
+                            ai = A[k, :]
+                            bi = b[k]
+                            n = np.linalg.norm(ai)
+                            ai = ai / n
+                            bi = bi / n
+                            # ...
+
+                        # dis.c = pyo.Constraint(expr=model.C[s,0,0] <= 0)
+
+                        model.add_component("sos_segment_" + str(s) + "_" + str(r), dis)
+                        yield dis
+                exprs = [x for x in region_gen()]
+                model.add_component("sos_segment_" + str(s), pyomo.gdp.Disjunction(expr=exprs, xor=True))
+        else:
+            pass
+
         # === Run Program ===
         
-        # test objective function, sum all coefficients in all polynomials
-        # model.obj = pyo.Objective(expr = expr.SumExpression([model.C[i, j, k] for i in a for j in b for k in c]))
-
-        # test solve using mosek as solver
+        # solve using mosek as solver
         opt = pyomo.opt.SolverFactory('mosek')
+        if safe_region_assignments is None:
+            trans = pyo.TransformationFactory('gdp.bigm') # this is what yalmip uses for "implies()"
+            # trans = pyo.TransformationFactory('gdp.hull') # same as yalmip "hull()"
+            trans.apply_to(model)
         opt.solve(model)
 
         print('')
@@ -278,19 +312,30 @@ class MisosTrajectoryProblem:
         print('obj_fn')
         print(pyo.value(obj_fn))
 
-        # plot found solution
-        
-        for l in a:
-            for d in b:
-                colors = ['b', 'g', 'r', 'c', 'm', 'y']
-                for dx in reversed(range(self.traj_degree+1)):
-                    coeffs = [pyo.value(expr.SumExpression([model.C[l, d, i].value * Cd[dx][i, x] for i in c])) for x in c]
-                    x = np.linspace(0, 1, 100)
-                    y = np.array([np.sum(np.array([coeffs[i]*(j**i) for i in range(len(coeffs))])) for j in x])
-                    x = np.linspace(l, l+1, 100)
-                    plt.plot(x, y, colors[dx], label=str(dx)+"th derivative")
+        # model.display()
 
-        plt.legend()
+        # plot solution
+        
+        # for l in a:
+        #     for d in b:
+        #         colors = ['b', 'g', 'r', 'c', 'm', 'y']
+        #         for dx in reversed(range(self.traj_degree+1)):
+        #             coeffs = [pyo.value(expr.SumExpression([model.C[l, d, i].value * Cd[dx][i, x] for i in c])) for x in c]
+        #             x = np.linspace(0, 1, 100)
+        #             y = np.array([np.sum(np.array([coeffs[i]*(j**i) for i in range(len(coeffs))])) for j in x])
+        #             x = np.linspace(l, l+1, 100)
+        #             plt.plot(x, y, colors[dx], label=str(dx)+"th derivative")
+
+        for l in a:
+            coeffs_x = [pyo.value(expr.SumExpression([model.C[l, 0, i].value * Cd[0][i, x] for i in c])) for x in c]
+            coeffs_y = [pyo.value(expr.SumExpression([model.C[l, 1, i].value * Cd[0][i, x] for i in c])) for x in c]
+            t = np.linspace(0, 1, 10)
+            x = np.array([np.sum(np.array([coeffs_x[i]*(j**i) for i in range(len(coeffs_x))])) for j in t])
+            y = np.array([np.sum(np.array([coeffs_y[i]*(j**i) for i in range(len(coeffs_y))])) for j in t])
+            plt.plot(x, y, 'b')
+
+        # plt.legend()
+        plt.grid()
         plt.show()
 
         print("done")
@@ -404,17 +449,26 @@ class MisosTrajectoryProblem:
 
 if __name__ == "__main__":
     problem = MisosTrajectoryProblem();
-    problem.num_traj_segments = 10
-    problem.traj_degree = 5
+    problem.num_traj_segments = 3
+    problem.traj_degree = 3
     # problem.basis = 'monomials'
     problem.solve_trajectory(np.array([
-        # [-2.4, -2.4],
-        # [-1, 0.],
-        [-2, 1, 0],
+        [-2, 0],
+        [-7, 0],
     ]), np.array([
-        # [-3.2, 0.5],
-        # [-3, 0.],
-        [1, -1, 0],
-    ]), np.array([
-        
-    ]))
+        [4, 0],
+        [-2, 0],
+    ]), [
+        {
+            "A": np.array([[1, 1]]),
+            "b": np.array([0.5])
+        },
+        {
+            "A": np.array([[1, -1]]),
+            "b": np.array([-1])
+        },
+        {
+            "A": np.array([[-1, -1]]),
+            "b": np.array([-1.5])
+        }
+    ])
