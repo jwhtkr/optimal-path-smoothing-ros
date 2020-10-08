@@ -3,12 +3,63 @@ from __future__ import division
 
 # cspell: disable
 """Implement the MISOSTrajectoryProblem.m in python with pyomo."""
-import mosek
+import gurobi
+# import mosek
 import pyomo.environ as pyo
 import pyomo.core.expr.current as expr
 import pyomo
 import numpy as np
 import matplotlib.pyplot as plt
+
+# def matrix_minor(row_idxs, col_idxs, var):
+#     if np.isscalar(matrix):
+#         raise ValueError("Cannot compute minor of a scalar.")
+#     if len(matrix.shape) != 2:
+#         raise ValueError("The array passed in must be 2D (a matrix).")
+
+#     rows = (i for i in range(matrix.shape[0]) if i not in row_idxs)
+#     cols = (j for j in range(matrix.shape[1]) if j not in col_idxs)
+
+#     idx = np.ix_(rows, cols)
+
+#     return symmetric_determinant(matrix[idx])
+
+def symmetric_determinant(row_idxs, col_idxs, var, cache={}):
+    row_idxs, col_idxs = tuple(row_idxs), tuple(col_idxs)
+    if len(row_idxs) != len(col_idxs):
+        print("row length: {}\tcol length: {}".format(len(row_idxs),
+                                                      len(col_idxs)))
+        raise ValueError("The array passed in must be square.")
+    try:
+        return cache[(row_idxs, col_idxs)]
+    except KeyError:
+        pass
+    if len(row_idxs) == 1:
+        i = row_idxs[0]
+        j = col_idxs[0]
+        if i > j:  # because the matrix is symmetric, only return upper triangle.
+            val = var[j, i]
+            cache[(row_idxs, col_idxs)] = val
+            return val
+        val = var[i, j]
+        cache[(row_idxs, col_idxs)] = val
+        return val
+
+    cofactors = []
+    i = row_idxs[0]
+    row_idxs_minor = row_idxs[1:]
+    for ind, j in enumerate(col_idxs):
+        col_idxs_minor = tuple(idx for idx in col_idxs if idx is not j)
+        if i > j:  # matrix is symmmetric, only use upper triangle
+            coeff = var[j, i]
+        else:
+            coeff = var[i, j]
+        cofactors.append((-1)**(ind) * coeff * symmetric_determinant(row_idxs_minor,
+                                                                     col_idxs_minor,
+                                                                     var, cache=cache))
+    det = sum(cofactors)
+    cache[(row_idxs, col_idxs)] = det
+    return det
 
 class MisosTrajectoryProblem:
     """Conversion of matlab class to python."""
@@ -71,7 +122,7 @@ class MisosTrajectoryProblem:
         print(goal)
 
         # === Construct Coefficients ===
-        
+
         # Start with a basis coefficients matrix b_mat.
         # basis = b_mat * [1 t t^2 t^3 ...]
         if self.basis == 'monomials':
@@ -130,7 +181,7 @@ class MisosTrajectoryProblem:
             [0, 0, 0, 0, 0, 0, 7, 0],
         ])
         derivative_mat = poly_derivative[0:coefficient_num, 0:coefficient_num]
-        
+
         # generates the k first derivatives including the 0th derivative of the polynomial with given coefficients
         def derivatives(poly_coef, num):
             poly_coef_deriv = poly_coef
@@ -187,7 +238,7 @@ class MisosTrajectoryProblem:
             return ex
         model.init_derivative_constraints = pyo.Constraint(k, b, rule=init_derivative_constraint)
 
-        # constrain the final position and derivatives using given start
+        # constrain the final position and derivatives using given goal
         # performs the matrix multiplication for each derivative: model.C * basis_1t == goal[:, 0]
         k = range(goal.shape[1]) # range of constrained derivatives
         print('')
@@ -296,9 +347,10 @@ class MisosTrajectoryProblem:
             pass
 
         # === Run Program ===
-        
+
         # solve using mosek as solver
-        opt = pyomo.opt.SolverFactory('mosek')
+        # opt = pyomo.opt.SolverFactory('mosek')
+        opt = pyo.SolverFactory('gurobi')
         if safe_region_assignments is None:
             trans = pyo.TransformationFactory('gdp.bigm') # this is what yalmip uses for "implies()"
             # trans = pyo.TransformationFactory('gdp.hull') # same as yalmip "hull()"
@@ -315,7 +367,7 @@ class MisosTrajectoryProblem:
         # model.display()
 
         # plot solution
-        
+
         # for l in a:
         #     for d in b:
         #         colors = ['b', 'g', 'r', 'c', 'm', 'y']
@@ -448,7 +500,9 @@ class MisosTrajectoryProblem:
         # after the debug section of the Matlab file that I think should be here.
 
 if __name__ == "__main__":
-    problem = MisosTrajectoryProblem();
+    sd = symmetric_determinant
+    sd([i for i in range(5)], [j for j in range(5)], np.eye(5))
+    problem = MisosTrajectoryProblem()
     problem.num_traj_segments = 3
     problem.traj_degree = 3
     # problem.basis = 'monomials'
