@@ -130,6 +130,7 @@ def smooth_unconstrained(desired_path, q_mat, r_mat, s_mat, time_step):
 
 def _setup_unconstrained(desired_path, q_mat, r_mat, s_mat, time_step):
     initial_state = desired_path[:, :, 0]
+               
     n_dim, n_int, n_step = desired_path.shape
 
     path = _path_from_mat(desired_path.reshape(-1, n_step, order="F"),
