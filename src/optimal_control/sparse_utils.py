@@ -1,14 +1,17 @@
 """Sparse matrix utility functions. Many related to/from scipy.sparse funcs."""
 
-from scipy.sparse import coo_matrix, issparse, bmat, eye, dok_matrix, vstack, hstack, csr_matrix  # pylint: disable=unused-import
+from scipy.sparse import coo_matrix, issparse, bmat, eye, dok_matrix, vstack, hstack, csr_matrix, csc_matrix  # pylint: disable=unused-import
 import numpy as np
 
 # used as exports
 assert bmat
 assert eye
-assert dok_matrix
+assert issparse
 assert vstack
+assert hstack
 assert csr_matrix
+assert csc_matrix
+assert dok_matrix
 
 
 def block_diag(mats, format='coo', dtype=None):  # pylint: disable=redefined-builtin

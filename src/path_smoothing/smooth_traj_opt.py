@@ -32,7 +32,7 @@ MAT_FILES = {"box": MAT_FILE_BASE.format("box"),
              "original": MAT_FILE_BASE.format("original")}
 MAT_FILE = MAT_FILES["voronoi"]
 
-USE_KEY_FRAME = True
+USE_KEY_FRAME = False
 KEY_FRAME_STEP = 10
 
 CREATE_FREE_REGIONS = False
@@ -130,7 +130,7 @@ def smooth_unconstrained(desired_path, q_mat, r_mat, s_mat, time_step):
 
 def _setup_unconstrained(desired_path, q_mat, r_mat, s_mat, time_step):
     initial_state = desired_path[:, :, 0]
-               
+
     n_dim, n_int, n_step = desired_path.shape
 
     path = _path_from_mat(desired_path.reshape(-1, n_step, order="F"),
@@ -276,7 +276,7 @@ def test_unconstrained():
     """Test unconstrained."""
     xd_mat, q_mat, r_mat, s_mat, dt = _unconstrained_from_mat(_load())
     result = smooth_unconstrained(xd_mat[:, :-1, :], q_mat, r_mat, s_mat, dt)
-    _plot(result[0], xd_mat)
+    _plot_traj_and_states(result[0], result[1], xd_mat)
     return result
 
 def _load():
@@ -284,29 +284,70 @@ def _load():
     f_name = os.path.join(f_dir, MAT_FILE)
     return scipy.io.loadmat(f_name)
 
-def _plot(x, xd_mat, fig=None, axes=None):
-    if not fig or not axes:
-        fig, axes = plt.subplot()
-    x_mat = x.reshape(xd_mat.shape[0], xd_mat.shape[1]-1,
-                      xd_mat.shape[2], order="F")
-    axes.plot(xd_mat[0, 0, :], xd_mat[1, 0, :],
-              x_mat[0, 0, :], x_mat[1, 0, :])
+def _plot_traj_and_states(x, u, xd_mat):
+    fig = plt.figure()
+    fig.set_tight_layout(True)
+    x_mat = x.reshape(xd_mat.shape[0], xd_mat.shape[1]-1, xd_mat.shape[2],
+                      order="F")
+    u_mat = u.reshape(xd_mat.shape[0], xd_mat.shape[2]-1, order="F")
+    fig, axes_traj = _plot_trajectory(x_mat, xd_mat, fig)
+    fig, axes_states = _plot_states(x_mat, u_mat, xd_mat, fig)
+    return fig, axes_traj
+
+def _plot_trajectory(x, xd_mat, fig=None):
+    if not fig:
+        fig = plt.figure()
+    axes = fig.add_subplot(1, xd_mat.shape[0]+1, 1)
+    axes.plot(xd_mat[0, 0, :], xd_mat[1, 0, :], x[0, 0, :], x[1, 0, :])
+    axes.axis("equal")
     return fig, axes
 
-def _unconstrained_from_mat(args):
-    return args["xd_mat"], args["Q"], args["R"], args["S"], args["dt"][0][0]
+def _plot_states(x, u, xd_mat, fig=None):
+    if not fig:
+        fig = plt.figure()
+    ndim, nint, nstep = x.shape
+
+    for i in range(ndim):
+        for j in range(nint):
+            axes = fig.add_subplot(nint+1, ndim+1, (ndim+1)*j+i+2, xticklabels=[])
+            if j == 0:
+                axes.set_title(["x", "y"][i])
+            if i == 0 and j > 0:
+                axes.set_ylabel([r"$\frac{d}{dt}$", r"$\frac{d^2}{dt^2}$", r"$\frac{d^3}{dt^3}$"][j-1], rotation="horizontal")
+            axes.plot(xd_mat[i, j, :])
+            axes.plot(x[i, j, :])
+    for i in range(ndim):
+        axes = fig.add_subplot(nint+1, ndim+1, (ndim+1)*nint+i+2)
+        if i == 0:
+            axes.set_ylabel(r"$\frac{d^2}{dt^2}$", rotation="horizontal")
+        axes.set_xlabel("time step index")
+        axes.plot(xd_mat[i, -1, :])
+        axes.plot(u[i, :])
+
+    return fig, axes
+
+def _unconstrained_from_mat(args, start=None, stop=None, step=None):
+    slc = slice(start, stop, step)
+
+    dt = args["dt"][0][0]
+    xd_mat = args["xd_mat"]
+
+    xd_mat = xd_mat[:, :, slc]
+    dt *= step if step else 1
+    return xd_mat, args["Q"], args["R"], args["S"], dt
 
 def test_constrained():
     """Test constrained."""
     xd_mat, q_mat, r_mat, s_mat, a_mat, b_vec, dt = _constrained_from_mat(_load())
     result = smooth_constrained(xd_mat[:, :-1, :], q_mat, r_mat, s_mat, a_mat,
                                 b_vec, dt)
-    _plot(result[0], xd_mat)
+    _plot_traj_and_states(result[0], result[1], xd_mat)
     return result
 
-def _constrained_from_mat(args):
-    xd_mat, q_mat, r_mat, s_mat, dt = _unconstrained_from_mat(args)
-    return xd_mat, q_mat, r_mat, s_mat, args["A"], args["b"], dt
+def _constrained_from_mat(args, start=None, stop=None, step=None):
+    xd_mat, q_mat, r_mat, s_mat, dt = _unconstrained_from_mat(args, start, stop, step)
+    slc = slice(start, stop, step)
+    return xd_mat, q_mat, r_mat, s_mat, args["A"][:, :, :, slc], args["b"][:, slc], dt
 
 def test_obstacles_mip():
     """Test MIP Obstacle avoidance."""
@@ -315,12 +356,12 @@ def test_obstacles_mip():
         free_regions = _create_free_regions(np.squeeze(xd_mat[:, 0, :]))
     else:
         free_regions = _free_regions_from(WORLD)
-    fig, axes = _plot_free_regions(free_regions)
     # axes.plot(xd_mat[0, 0, :].flatten(), xd_mat[1, 0, :].flatten())
 
     result = smooth_obstacles_mip(xd_mat[:, :-1, :], q_mat, r_mat, s_mat, a_mat,
                                   b_vec, free_regions, dt)
-    _plot(result[0], xd_mat, fig=fig, axes=axes)
+    fig, axes = _plot_traj_and_states(result[0], result[1], xd_mat)
+    fig, axes = _plot_free_regions(free_regions, fig=fig, axes=axes)
     return result
 
 def _create_free_regions(position, dist=5.0):
