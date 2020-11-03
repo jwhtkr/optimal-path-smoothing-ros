@@ -33,7 +33,7 @@ MAT_FILES = {"box": MAT_FILE_BASE.format("box"),
 MAT_FILE = MAT_FILES["voronoi"]
 
 USE_KEY_FRAME = False
-KEY_FRAME_STEP = 10
+KEY_FRAME_STEP = 20
 
 CREATE_FREE_REGIONS = False
 
@@ -71,6 +71,12 @@ CORRIDOR_WORLD_STRAIGHT_WITH_OBSTACLE = {1: ((-2., -2., 14., 14.),
                                              (-8., -4., -4., -8.))}
 
 WORLD = CORRIDOR_WORLD_STRAIGHT_WITH_OBSTACLE
+# WORLD_SHORT = {1: ((-2., -2., 2., 6.),
+#                    (-1.75, 1.75, 1.75, -1.75)),
+#                2: ((3., 7., 14., 14.),
+#                    (-1.75, 1.75, 1.75, -1.75))}
+WORLD_SHORT = {1: CORRIDOR_WORLD_STRAIGHT_WITH_OBSTACLE[2],
+               2: CORRIDOR_WORLD_STRAIGHT_WITH_OBSTACLE[5]}
 
 SmoothingArguments = collections.namedtuple("SmoothingArguments",
                                             ["constraints",
@@ -292,12 +298,13 @@ def _plot_traj_and_states(x, u, xd_mat):
     u_mat = u.reshape(xd_mat.shape[0], xd_mat.shape[2]-1, order="F")
     fig, axes_traj = _plot_trajectory(x_mat, xd_mat, fig)
     fig, axes_states = _plot_states(x_mat, u_mat, xd_mat, fig)
+    fig, axes_characteristics = _plot_characteristics(x_mat, xd_mat, fig)
     return fig, axes_traj
 
 def _plot_trajectory(x, xd_mat, fig=None):
     if not fig:
         fig = plt.figure()
-    axes = fig.add_subplot(1, xd_mat.shape[0]+1, 1)
+    axes = fig.add_subplot(1, 3, 1)
     axes.plot(xd_mat[0, 0, :], xd_mat[1, 0, :], x[0, 0, :], x[1, 0, :])
     axes.axis("equal")
     return fig, axes
@@ -306,25 +313,92 @@ def _plot_states(x, u, xd_mat, fig=None):
     if not fig:
         fig = plt.figure()
     ndim, nint, nstep = x.shape
+    ncol = 2*ndim + 2
+    nrow = nint + 1
 
-    for i in range(ndim):
-        for j in range(nint):
-            axes = fig.add_subplot(nint+1, ndim+1, (ndim+1)*j+i+2, xticklabels=[])
-            if j == 0:
-                axes.set_title(["x", "y"][i])
-            if i == 0 and j > 0:
-                axes.set_ylabel([r"$\frac{d}{dt}$", r"$\frac{d^2}{dt^2}$", r"$\frac{d^3}{dt^3}$"][j-1], rotation="horizontal")
-            axes.plot(xd_mat[i, j, :])
-            axes.plot(x[i, j, :])
-    for i in range(ndim):
-        axes = fig.add_subplot(nint+1, ndim+1, (ndim+1)*nint+i+2)
-        if i == 0:
-            axes.set_ylabel(r"$\frac{d^2}{dt^2}$", rotation="horizontal")
+    for j in range(ndim):
+        for i in range(nint):
+            row = i
+            col = ndim + j
+            axes = fig.add_subplot(nrow, ncol, row*ncol+col+1, xticklabels=[])
+            if i == 0:
+                axes.set_title(["x", "y"][j])
+            if j == 0 and i > 0:
+                axes.set_ylabel([r"$\frac{d}{dt}$", r"$\frac{d^2}{dt^2}$", r"$\frac{d^3}{dt^3}$"][i-1], rotation="horizontal")
+            axes.plot(xd_mat[j, i, :])
+            axes.plot(x[j, i, :])
+    for j in range(ndim):
+        row = nrow - 1
+        col = ndim + j
+        axes = fig.add_subplot(nrow, ncol, row*ncol+col+1)
+        if j == 0:
+            axes.set_ylabel(r"$\frac{d^4}{dt^4}$", rotation="horizontal")
         axes.set_xlabel("time step index")
-        axes.plot(xd_mat[i, -1, :])
-        axes.plot(u[i, :])
+        axes.plot(xd_mat[j, -1, :])
+        axes.plot(u[j, :])
 
     return fig, axes
+
+def _plot_characteristics(x, xd_mat, fig=None):
+    if not fig:
+        fig = plt.figure()
+    ndim, nint, nstep = x.shape
+    ncol = 2*ndim + 2
+    nrow = 3
+    funcs = [[calc_curvature], [calc_vel, calc_omega], [calc_accel, calc_alpha]]
+    ylabels = [["$\\kappa$"], ["v", "$\\omega$"], ["a", "$\\alpha$"]]
+    for i in range(3):
+        for j in range(2):
+            row = i
+            col = 2*ndim + j
+            if i == 0:
+                if j == 1:
+                    continue
+                axes = fig.add_subplot(nrow, 3, row*3+3)
+            else:
+                axes = fig.add_subplot(nrow, ncol, row*ncol+col+1)
+
+            axes.set_ylabel(ylabels[i][j])
+            if i == 2:
+                axes.set_xlabel("time step index")
+
+            axes.plot(funcs[i][j](xd_mat[:, :-1, :]))
+            axes.plot(funcs[i][j](x))
+
+    return fig, axes
+
+def calc_curvature(trajectory):
+    v = calc_vel(trajectory)
+    w = calc_omega(trajectory)
+    return w/v
+
+def calc_vel(trajectory):
+    return np.linalg.norm(trajectory[:, 1, :], axis=0)
+
+def calc_omega(trajectory):
+    vx, vy = trajectory[0, 1, :], trajectory[1, 1, :]
+    ax, ay = trajectory[0, 2, :], trajectory[1, 2, :]
+    v = calc_vel(trajectory)
+
+    return (vx*ay - vy*ax)/v**2
+
+def calc_accel(trajectory):
+    vx, vy = trajectory[0, 1, :], trajectory[1, 1, :]
+    ax, ay = trajectory[0, 2, :], trajectory[1, 2, :]
+    v = calc_vel(trajectory)
+
+    return (vx*ax + vy*ay)/v
+
+def calc_alpha(trajectory):
+    vx, vy = trajectory[0, 1, :], trajectory[1, 1, :]
+    ax, ay = trajectory[0, 2, :], trajectory[1, 2, :]
+    jx, jy = trajectory[0, 3, :], trajectory[1, 3, :]
+    v = calc_vel(trajectory)
+    a = calc_accel(trajectory)
+    k = calc_curvature(trajectory)
+
+    return (vx*jy - vy*jx)/v**2 - 2*a*k
+
 
 def _unconstrained_from_mat(args, start=None, stop=None, step=None):
     slc = slice(start, stop, step)
@@ -422,11 +496,28 @@ def _plot_free_regions(regions, fig=None, axes=None):
     axes.autoscale()
     return fig, axes
 
+def test_obstacles_short():
+    xd_mat, q_mat, r_mat, s_mat, a_mat, b_vec, dt = _constrained_from_mat(_load(), 1600, 2000, 4)
+    if CREATE_FREE_REGIONS:
+        free_regions = _create_free_regions(np.squeeze(xd_mat[:, 0, :]))
+    else:
+        free_regions = _free_regions_from(WORLD_SHORT)
+    fig, axes = _plot_free_regions(free_regions)
+    axes.plot(xd_mat[0, 0, :].flatten(), xd_mat[1, 0, :].flatten())
+    plt.show()
+
+    result = smooth_obstacles_mip(xd_mat[:, :-1, :], q_mat, r_mat, s_mat, a_mat,
+                                  b_vec, free_regions, dt)
+    fig, axes = _plot_traj_and_states(result[0], result[1], xd_mat)
+    fig, axes = _plot_free_regions(free_regions, fig=fig, axes=axes)
+    return result
+
 if __name__ == "__main__":
     import time
     t_start = time.time()
     # test_unconstrained()
     # test_constrained()
-    test_obstacles_mip()
+    # test_obstacles_mip()
+    test_obstacles_short()
     print(time.time()-t_start)
     plt.show()

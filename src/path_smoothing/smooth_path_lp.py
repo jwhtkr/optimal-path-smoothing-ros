@@ -24,6 +24,7 @@ def smooth_path_qp(desired_path, q_mat, r_mat, s_mat, a_mat, b_mat, time_step): 
     nx, nu = ndim*nint*nstep, ndim*(nstep-1)
     x_initial = desired_path[:, :, 0]
     x_final = desired_path[:, :, -1]
+    xd = desired_path.flatten(order="F")
     A_eq, b_eq = discrete_dynamic_equalities(ndim, nint, nstep, x_initial,
                                                time_step)
     A_eq, b_eq = add_terminal_constraint(A_eq, b_eq, x_final, nstep)
@@ -39,20 +40,21 @@ def smooth_path_qp(desired_path, q_mat, r_mat, s_mat, a_mat, b_mat, time_step): 
     m = gp.Model()
     if not DISPLAY:
         m.setParam("outputflag", 0)
-    m.Params.method = 1
+    m.setParam("method", 1)
     x = m.addMVar((nx,), lb=-gp.GRB.INFINITY, name="x")
     u = m.addMVar((nu,), lb=-gp.GRB.INFINITY, name="u")
     m.addConstr(A_eq_x @ x + A_eq_u @ u == b_eq, name="eq")
     m.addConstr(A_ub_x @ x + A_ub_u @ u <= b_ub, name="ineq")
-    m.setObjective(x @ P_x @ x + u @ P_u @ u + q_x @ x + q_u @ u,
+    m.setObjective(x @ P_x @ x + u @ P_u @ u + q_x @ x + q_u @ u + xd @ xd,
                    sense=gp.GRB.MINIMIZE)
 
     # print(time.time()-start_time)
     m.optimize()
     # print(time.time() - start_time)
     path = np.concatenate([x.x, u.x])
-    runtime = m.runtime
-    return path[:nx], path[nx:], runtime
+    objective = m.getAttr("objval")
+    runtime = m.getAttr("runtime")
+    return path[:nx], path[nx:], objective, runtime
 
 def smooth_path_lp(desired_path, q_mat, r_mat, s_mat, a_mat, b_mat, time_step, mode="infinity"): # noqa: D103
     ndim, nint, nstep = desired_path.shape
@@ -74,7 +76,7 @@ def smooth_path_lp(desired_path, q_mat, r_mat, s_mat, a_mat, b_mat, time_step, m
     m = gp.Model()
     if not DISPLAY:
         m.setParam("outputflag", 0)
-    m.Params.method = 2
+    m.setParam("method", 2)
     x = m.addMVar((nx,), lb=-gp.GRB.INFINITY, name="x")
     u = m.addMVar((nu,), lb=-gp.GRB.INFINITY, name="u")
     e = m.addMVar((ne,), name="epsilon")
@@ -87,7 +89,8 @@ def smooth_path_lp(desired_path, q_mat, r_mat, s_mat, a_mat, b_mat, time_step, m
     m.addConstr(A_ub_x @ x + A_ub_u @ u + A_ub_e @ e <= b_ub, name="ineq")
     m.setObjective(c_x @ x + c_u @ u + c_e @ e, sense=gp.GRB.MINIMIZE)
     m.optimize()
-    runtime = m.runtime
+    objective = m.getAttr("objval")
+    runtime = m.getAttr("runtime")
     path = np.concatenate([x.x, u.x])
 
     ############# OSQP ##################
@@ -96,16 +99,16 @@ def smooth_path_lp(desired_path, q_mat, r_mat, s_mat, a_mat, b_mat, time_step, m
     # m_osqp = osqp.OSQP()
     # m_osqp.setup(P, q, A, l, u, verbose=DISPLAY)
     # result = m_osqp.solve()
+    # objective = result.info.obj_val
     # runtime = result.info.run_time
     # path = remove_slack(result.x, ne)
 
-    ############# Scipy ################
-    # result = opt.linprog(c, A_ub, b_ub, A_eq, b_eq, bounds)
+    ############# Scipy ################   Not set up to give correct return values
     # result = opt.linprog(c, A_ub, b_ub, A_eq, b_eq, bounds)
     # path = remove_slack(result.x, ne)
 
 
-    return path[:nx], path[nx:], runtime
+    return path[:nx], path[nx:], objective, runtime
 
 def discrete_dynamic_equalities(ndim, nint, nstep, x_initial, time_step): # noqa: D103
     I = sparse.eye(ndim*nint, format='coo')
@@ -281,7 +284,11 @@ def _shorten(xd_mat, a_mat, b_mat, dt, nsteps, step):
 def _calc_slice(num, stop, *, start=0):
     nspan = stop - start
     eps = nspan/num/100
-    step = math.floor(nspan/num + eps)
+    out = np.empty_like(num, dtype=np.int)
+    step = np.floor(nspan/num + eps, out=out, casting="unsafe")
+    # step = math.floor(nspan/num + eps)
+    # calculate correct stop value to get num
+    stop = (num - 1)*step + start + 1
     return start, stop, step
 
 def _calc_short(num, step):
@@ -290,141 +297,149 @@ def _calc_short(num, step):
     stop = (num - 1)*step + start + 1
     return start, stop, step
 
-PLOT = True
-SAVE_FIGS = True
+def _display(results, name, xd_mat):
+    print("Time: {:.3f}".format(results[3]))
+    if PLOT:
+        fig, _ = _plot_traj_and_states(results[0], results[1], xd_mat)
+        fig.suptitle("{} - Time: {:.3f}\nObj. Value: {:.3f}".format(name, results[3], results[2]))
+        return fig
 
-if __name__ == "__main__":
+def _results(xd_mat, q_mat, r_mat, s_mat, a_mat, b_mat, dt, suffix=""):
+    if suffix:
+        suffix = "-" + suffix
+
+    tests = {"LP-inf": (smooth_path_lp, "LP-$\\infty$"),
+             "LP-one": (lambda *args: smooth_path_lp(*args, "one"), "LP-1"),
+             "QP": (smooth_path_qp, "QP")}
+
+    figs = []
+
+    for k, v in tests.items():
+        name = k + suffix
+        fig_name = v[1] + suffix
+        print("--------------------{}--------------------".format(name))
+        result = v[0](xd_mat[:, :-1, :], q_mat, r_mat, s_mat, a_mat, b_mat, dt)
+        fig = _display(result, fig_name, xd_mat)
+        if fig:
+            figs.append(fig)
+
+    return figs
+
+def test_simple():
     # xd_mat = np.array([[[0, 1, 2], [1, 1, 1], [0, 0, 0], [0, 0, 0], [0, 0, 0]],
     #                    [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]]])
 
-    # xd = np.concatenate([np.linspace(0, 10), np.full((50,), 10)])
-    # yd = np.concatenate([np.zeros((50,)), np.linspace(0, 10)])
-    # xd_vec = np.concatenate([xd.reshape(1, -1), yd.reshape(1, -1), np.zeros((8, 100))], axis=0)
-    # xd_mat = xd_vec.reshape(2, 5, 100, order='F')
-    # xd_mat[:, 1, 0] = [1, 0]
-    # xd_mat[:, 1, -1] = [0, 1]
+    xd = np.concatenate([np.linspace(0, 10), np.full((50,), 10)])
+    yd = np.concatenate([np.zeros((50,)), np.linspace(0, 10)])
+    xd_vec = np.concatenate([xd.reshape(1, -1), yd.reshape(1, -1), np.zeros((8, 100))], axis=0)
+    xd_mat = xd_vec.reshape((2, 5, -1), order='F')
+    xd_mat[:, 1, :50] = np.array([1, 0]).reshape(-1, 1)
+    xd_mat[:, 1, -50:] = np.array([0, 1]).reshape(-1, 1)
 
-    # ndim, nint, nstep = xd_mat.shape
-    # q_mat = np.diag([1, 1, 0, 0, 10, 10, 10, 10])
-    # r_mat = np.diag([1, 1])
-    # s_mat = q_mat
-    # a_mat = np.empty((0, ndim, nint, nstep))
-    # b_mat = np.empty((0, nstep))
-    # dt = 0.1
+    ndim, nint, nstep = xd_mat.shape
+    q_mat = np.diag([1, 1, 0, 0, 10, 10, 10, 10])
+    r_mat = np.diag([1, 1])
+    s_mat = q_mat
+    a_mat = np.empty((0, ndim, nint, nstep))
+    b_mat = np.empty((0, nstep))
+    dt = 0.2
 
+    return _results(xd_mat, q_mat, r_mat, s_mat, a_mat, b_mat, dt, "simple")
+
+def test_full():
+    return _results(*_constrained_from_mat(_load()))
+
+def test_sliced(n):
     xd_mat, q_mat, r_mat, s_mat, a_mat, b_mat, dt = _constrained_from_mat(_load())
+    xd_mat_sliced, _, _, _, a_mat_sliced, b_mat_sliced, dt_sliced = _constrained_from_mat(_load(), *_calc_slice(n, xd_mat.shape[2]))
     # q_mat = np.diag([1, 1, 0, 0, 1, 1, 1, 1])
     # r_mat = np.diag([10, 10])
-    n = 100
-    xd_mat_sliced, _, _, _, a_mat_sliced, b_mat_sliced, dt_sliced = _constrained_from_mat(_load(), *_calc_slice(n,xd_mat.shape[2]))
 
-    xd_mat_short, _, _, _, a_mat_short, b_mat_short, dt_short = _constrained_from_mat(_load(), *_calc_short(n, 10))
-    # start_time = time.time()
+    return _results(xd_mat_sliced, q_mat, r_mat, s_mat, a_mat_sliced, b_mat_sliced, dt_sliced, "sliced")
+
+def test_short(n):
+    xd_mat, q_mat, r_mat, s_mat, a_mat, b_mat, dt = _constrained_from_mat(_load())
+    xd_mat_short, _, _, _, a_mat_short, b_mat_short, dt_short = _constrained_from_mat(_load(), *_calc_short(n, 1))
+    # q_mat = np.diag([1, 1, 0, 0, 1, 1, 1, 1])
+    # r_mat = np.diag([10, 10])
+
+    return _results(xd_mat_short, q_mat, r_mat, s_mat, a_mat_short, b_mat_short, dt_short, "short")
+
+def optimization_time():
+    xd_mat, q_mat, r_mat, s_mat, a_mat, b_mat, dt = _constrained_from_mat(_load())
+    nstep = xd_mat.shape[2]
+    ns = np.logspace(1, 4, num=25, endpoint=False, dtype=np.int)
+    # ns = ns[ns < 1000]
+    ns = ns[ns < nstep]
+    ns = np.concatenate([ns, [nstep]])
+
+    cases = ["LP-$\\infty$", "LP-one", "QP"]
+    case_funcs = [smooth_path_lp, lambda *args: smooth_path_lp(*args, "one"),
+                  smooth_path_qp]
+
+    result_arr = np.ma.empty((2*len(cases), len(ns), 4), dtype=np.object)
+
+    start_time = time.time()
+    for j, n in enumerate(ns):
+        print("-------------{}/{}-------------".format(j+1, len(ns)))
+        sliced_args = list(_constrained_from_mat(_load(), *_calc_slice(n, nstep)))
+        short_args = list(_constrained_from_mat(_load(), *_calc_short(n, 1)))
+        sliced_args[0] = sliced_args[0][:, :-1, :]
+        short_args[0] = short_args[0][:, :-1, :]
+        for i, _ in enumerate(cases):
+            row = 2*i
+            try:
+                result_arr[row, j] = case_funcs[i](*sliced_args)
+                print("Solve Time: {}".format(result_arr[row, j, 3]))
+            except gp.GurobiError:
+                result_arr[row, j] = np.ma.masked
+            print("Cumulative Time: {}".format(time.time() - start_time))
+            try:
+                result_arr[row+1, j] = case_funcs[i](*short_args)
+                print("Solve Time: {}".format(result_arr[row+1, j, 3]))
+            except gp.GurobiError:
+                result_arr[row+1, j] = np.ma.masked
+            print("Cumulative Time: {}".format(time.time() - start_time))
+
+    ### Plot stuff
+    fig_time, axes_time = plt.subplots()
+    axes_time.semilogx(ns, result_arr[:, :, 3].filled(0).T, "x-")
+    axes_time.set_xlabel("Problem size (N)")
+    axes_time.set_ylabel("Optimization Solve Time (sec)")
+    axes_time.legend([cases[0]+"-sliced", cases[0]+"-short",
+                 cases[1]+"-sliced", cases[1]+"-short",
+                 cases[2]+"-sliced", cases[2]+"-short"])
+    fig_time.suptitle("Solve Time for Various Problem Sizes")
+
+    fig_cost, axes_cost = plt.subplots()
+    _, _, steps = _calc_slice(ns, xd_mat.shape[2])
+    # axes_cost.plot(steps*0.01, result_arr[::2, :, 2].T*steps[:, np.newaxis]*0.01, "x-")
+    axes_cost.semilogx(steps*0.01, result_arr[::2, :, 2].T*steps[:, np.newaxis]*0.01, "x-")
+    axes_cost.invert_xaxis()
+    axes_cost.set_xlabel("Discretization Resolution $\\Delta t$ (sec)")
+    axes_cost.set_ylabel("Normalized Objective Cost (Cost*$\\Delta t$)")
+    axes_cost.legend([cases[0], cases[1], cases[2]])
+    fig_cost.suptitle("Optimal Cost for Various Resoulutions")
+
+    return [fig_time, fig_cost]
+
+if __name__ == "__main__":
+    PLOT = True
+    SAVE_FIGS = False
+
+    n = 100
 
     fig_list = []
 
-    print("-----------------LP-inf---------------------")
-    lp_inf = smooth_path_lp(xd_mat[:, :-1, :], q_mat, r_mat, s_mat, a_mat, b_mat, dt)
-    if PLOT:
-        fig_lp_inf, _ = _plot_traj_and_states(lp_inf[0], lp_inf[1], xd_mat)
-        fig_lp_inf.suptitle("LP-$\\infty$ - Time: {:.3f}".format(lp_inf[2]))
-        fig_list.append(fig_lp_inf)
-    else:
-        print("Time: {:.3f}".format(lp_inf[2]))
+    # fig_list.extend(test_simple())
+    # fig_list.extend(test_full())
+    # fig_list.extend(test_sliced(n))
+    # fig_list.extend(test_short(n))
 
-    print("-----------------LP-one---------------------")
-    lp_one = smooth_path_lp(xd_mat[:, :-1, :], q_mat, r_mat, s_mat, a_mat, b_mat, dt, "one")
-    if PLOT:
-        fig_lp_one, _ = _plot_traj_and_states(lp_one[0], lp_one[1], xd_mat)
-        fig_lp_one.suptitle("LP-1 - Time: {:.3f}".format(lp_one[2]))
-        fig_list.append(fig_lp_one)
-    else:
-        print("Time: {:.3f}".format(lp_one[2]))
-
-    print("-------------------QP-----------------------")
-    qp = smooth_path_qp(xd_mat[:, :-1, :], q_mat, r_mat, s_mat, a_mat, b_mat, dt)
-    if PLOT:
-        fig_qp, _ = _plot_traj_and_states(qp[0], qp[1], xd_mat)
-        fig_qp.suptitle("QP - Time: {:.3f}".format(qp[2]))
-        fig_list.append(fig_qp)
-    else:
-        print("Time: {:.3f}".format(qp[2]))
-
-
-    print("--------------LP-inf-sliced-----------------")
-    lp_inf_sliced = smooth_path_lp(xd_mat_sliced[:, :-1, :], q_mat, r_mat,
-                                   s_mat, a_mat_sliced, b_mat_sliced, dt_sliced)
-    if PLOT:
-        fig_lp_inf_sliced, _ = _plot_traj_and_states(lp_inf_sliced[0],
-                                                    lp_inf_sliced[1],
-                                                    xd_mat_sliced)
-        fig_lp_inf_sliced.suptitle("LP-$\\infty$ - sliced - Time: {:.3f}".format(lp_inf_sliced[2]))
-        fig_list.append(fig_lp_inf_sliced)
-    else:
-        print("Time: {:.3f}".format(lp_inf_sliced[2]))
-
-    print("--------------LP-one-sliced-----------------")
-    lp_one_sliced = smooth_path_lp(xd_mat_sliced[:, :-1, :], q_mat, r_mat,
-                                   s_mat, a_mat_sliced, b_mat_sliced, dt_sliced,
-                                   "one")
-    if PLOT:
-        fig_lp_one_sliced, _ = _plot_traj_and_states(lp_one_sliced[0],
-                                                    lp_one_sliced[1],
-                                                    xd_mat_sliced)
-        fig_lp_one_sliced.suptitle("LP-1 - sliced - Time: {:.3f}".format(lp_one_sliced[2]))
-        fig_list.append(fig_lp_one_sliced)
-    else:
-        print("Time: {:.3f}".format(lp_one_sliced[2]))
-
-    print("----------------QP-sliced-------------------")
-    qp_sliced = smooth_path_qp(xd_mat_sliced[:, :-1, :], q_mat, r_mat, s_mat,
-                               a_mat_sliced, b_mat_sliced, dt_sliced)
-    if PLOT:
-        fig_qp_sliced, _ = _plot_traj_and_states(qp_sliced[0], qp_sliced[1],
-                                                xd_mat_sliced)
-        fig_qp_sliced.suptitle("QP - sliced - Time: {:.3f}".format(qp_sliced[2]))
-        fig_list.append(fig_qp_sliced)
-    else:
-        print("Time: {:.3f}".format(qp_sliced[2]))
-
-
-    print("--------------LP-inf-short------------------")
-    lp_inf_short = smooth_path_lp(xd_mat_short[:, :-1, :], q_mat, r_mat, s_mat,
-                                  a_mat_short, b_mat_short, dt_short)
-    if PLOT:
-        fig_lp_inf_short, _ = _plot_traj_and_states(lp_inf_short[0],
-                                                    lp_inf_short[1],
-                                                    xd_mat_short)
-        fig_lp_inf_short.suptitle("LP-$\\infty$ - short - Time: {:.3f}".format(lp_inf_short[2]))
-        fig_list.append(fig_lp_inf_short)
-    else:
-        print("Time: {:.3f}".format(lp_inf_short[2]))
-
-    print("--------------LP-one-short------------------")
-    lp_one_short = smooth_path_lp(xd_mat_short[:, :-1, :], q_mat, r_mat, s_mat,
-                                  a_mat_short, b_mat_short, dt_short, "one")
-    if PLOT:
-        fig_lp_one_short, _ = _plot_traj_and_states(lp_one_short[0],
-                                                    lp_one_short[1],
-                                                    xd_mat_short)
-        fig_lp_one_short.suptitle("LP-1 - short - Time: {:.3f}".format(lp_one_short[2]))
-        fig_list.append(fig_lp_one_short)
-    else:
-        print("Time: {:.3f}".format(lp_one_short[2]))
-
-    print("----------------QP-short--------------------")
-    qp_short = smooth_path_qp(xd_mat_short[:, :-1, :], q_mat, r_mat, s_mat,
-                              a_mat_short, b_mat_short, dt_short)
-    if PLOT:
-        fig_qp_short, _ = _plot_traj_and_states(qp_short[0], qp_short[1],
-                                                xd_mat_short)
-        fig_qp_short.suptitle("QP - short - Time: {:.3f}".format(qp_short[2]))
-        fig_list.append(fig_qp_short)
-    else:
-        print("Time: {:.3f}".format(qp_short[2]))
+    fig_list.extend(optimization_time())
 
     if PLOT and SAVE_FIGS:
         for i, fig in enumerate(fig_list):
-            fig.savefig("figure_{}.png".format(i))
-    if PLOT and not SAVE_FIGS:
+            fig.savefig("figure_{}.svg".format(i))
+    if PLOT:
         plt.show()

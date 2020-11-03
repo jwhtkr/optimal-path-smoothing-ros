@@ -203,6 +203,7 @@ class Gurobi(solver.Solver):
         if warm_start:
             self._warm_start(warm_start)
         self.model.optimize()
+        print(self.model.getAttr("runtime"))
         if self.model.getAttr("status") == gp.GRB.OPTIMAL:
             return np.concatenate([self.x_vec.x, self.u_vec.x])
         else:
