@@ -75,8 +75,21 @@ WORLD = CORRIDOR_WORLD_STRAIGHT_WITH_OBSTACLE
 #                    (-1.75, 1.75, 1.75, -1.75)),
 #                2: ((3., 7., 14., 14.),
 #                    (-1.75, 1.75, 1.75, -1.75))}
-WORLD_SHORT = {1: CORRIDOR_WORLD_STRAIGHT_WITH_OBSTACLE[2],
-               2: CORRIDOR_WORLD_STRAIGHT_WITH_OBSTACLE[5]}
+# WORLD_SHORT = {1: CORRIDOR_WORLD_STRAIGHT_WITH_OBSTACLE[2],
+#                2: CORRIDOR_WORLD_STRAIGHT_WITH_OBSTACLE[5]}
+WORLD_SHORT = {1: CORRIDOR_WORLD_STRAIGHT[2],
+               2: CORRIDOR_WORLD_STRAIGHT[3]}
+
+WORLD_SHORT_N = {1: {1: ((10., 10., 16., 22., 22.),
+                         (-1.75, 3., 10., 10., -1.75))},
+                 2: {1: CORRIDOR_WORLD_STRAIGHT_WITH_OBSTACLE[2],
+                     2: CORRIDOR_WORLD_STRAIGHT_WITH_OBSTACLE[5]},
+                 3: {1: ((10., 10., 14., 14.),
+                         (-1.75, 6., 6., -1.75)),
+                     2: ((13., 13., 14., 14.),
+                         (6., 7., 7., 6.)),
+                     3: ((14., 14., 22., 22.,),
+                         (6., 10., 10., 6.))}}
 
 SmoothingArguments = collections.namedtuple("SmoothingArguments",
                                             ["constraints",
@@ -497,18 +510,27 @@ def _plot_free_regions(regions, fig=None, axes=None):
     return fig, axes
 
 def test_obstacles_short():
-    xd_mat, q_mat, r_mat, s_mat, a_mat, b_vec, dt = _constrained_from_mat(_load(), 1600, 2000, 4)
+    start, stop, step = 1200, 2200, 10
+    # start, stop, step = 1600, 2000, 4
+    # start, stop, step = 1000, 2000, 10
+    # start, stop, step = 1600, 2600, 10
+    xd_mat, q_mat, r_mat, s_mat, a_mat, b_vec, dt = _constrained_from_mat(_load(), start, stop, step)
     if CREATE_FREE_REGIONS:
         free_regions = _create_free_regions(np.squeeze(xd_mat[:, 0, :]))
     else:
-        free_regions = _free_regions_from(WORLD_SHORT)
+        free_regions = _free_regions_from(WORLD)
     fig, axes = _plot_free_regions(free_regions)
     axes.plot(xd_mat[0, 0, :].flatten(), xd_mat[1, 0, :].flatten())
+    axes.axis("equal")
     plt.show()
 
     result = smooth_obstacles_mip(xd_mat[:, :-1, :], q_mat, r_mat, s_mat, a_mat,
                                   b_vec, free_regions, dt)
-    fig, axes = _plot_traj_and_states(result[0], result[1], xd_mat)
+    x = result[0].reshape(xd_mat.shape[0], xd_mat.shape[1]-1, xd_mat.shape[2], order="F")
+    # fig, axes = _plot_traj_and_states(result[0], result[1], xd_mat)
+    fig, axes = plt.subplots()
+    axes.plot(xd_mat[0, 0, :], xd_mat[1, 0, :], x[0, 0, :], x[1, 0, :])
+    axes.axis("equal")
     fig, axes = _plot_free_regions(free_regions, fig=fig, axes=axes)
     return result
 
