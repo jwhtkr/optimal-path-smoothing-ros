@@ -14,28 +14,41 @@ import osqp
 
 import optimal_control.sparse_utils as sparse
 # import geometry.polytope as poly
-from path_smoothing.smooth_traj_opt import _load, _constrained_from_mat, _plot_traj_and_states
+from path_smoothing.smooth_traj_opt import _load, _constrained_from_mat, _plot_traj_and_states, _calc_big_m
 
 DISPLAY = False
 
 
-def smooth_path_qp(desired_path, q_mat, r_mat, s_mat, a_mat, b_mat, time_step): # noqa: D103
+def smooth_path_qp(desired_path, q_mat, r_mat, s_mat, a_mat, b_mat, free_regions, time_step): # noqa: D103
     ndim, nint, nstep = desired_path.shape
     nx, nu = ndim*nint*nstep, ndim*(nstep-1)
     x_initial = desired_path[:, :, 0]
     x_final = desired_path[:, :, -1]
     xd = desired_path.flatten(order="F")
     A_eq, b_eq = discrete_dynamic_equalities(ndim, nint, nstep, x_initial,
-                                               time_step)
+                                             time_step)
     A_eq, b_eq = add_terminal_constraint(A_eq, b_eq, x_final, nstep)
     A_ub, b_ub = unpack_a_b(a_mat, b_mat, nstep)
     P_x, P_u, q_x, q_u = quadratic_cost(desired_path, q_mat, r_mat, s_mat,
                                         ndim, nint, nstep)
+    Ps, qs = (P_x, P_u), (q_x, q_u)
+    if free_regions:
+        nbin = sum(len(b) for _, b in free_regions)
+        na = nstep*nbin
+        # A_eq, b_eq = eq_add_mip(A_eq, b_eq, free_regions, nstep)
+        # A_ub, b_ub = ub_add_mip(A_ub, b_ub, free_regions, nstep)
+        P_a, q_a = sparse.coo_matrix((na, na)), sparse.coo_matrix((na,))
+        Ps += (P_a,)
+        qs += (q_a,)
 
     A_eq = A_eq.tocsr()
     A_ub = A_ub.tocsr()
-    A_eq_x, A_eq_u = A_eq[:, :nx], A_eq[:, nx:nx+nu]
-    A_ub_x, A_ub_u = A_ub[:, :nx], A_ub[:, nx:nx+nu]
+    A_eqs = A_eq[:, :nx], A_eq[:, nx:nx+nu]
+    A_ubs = A_ub[:, :nx], A_ub[:, nx:nx+nu]
+    if free_regions:
+        A_eq_a, A_ub_a = A_eq[:, nx+nu:], A_ub[:, nx+nu:]
+        A_eqs += (A_eq_a,)
+        A_ubs += (A_ub_a,)
 
     m = gp.Model()
     if not DISPLAY:
@@ -43,20 +56,29 @@ def smooth_path_qp(desired_path, q_mat, r_mat, s_mat, a_mat, b_mat, time_step): 
     m.setParam("method", 1)
     x = m.addMVar((nx,), lb=-gp.GRB.INFINITY, name="x")
     u = m.addMVar((nu,), lb=-gp.GRB.INFINITY, name="u")
-    m.addConstr(A_eq_x @ x + A_eq_u @ u == b_eq, name="eq")
-    m.addConstr(A_ub_x @ x + A_ub_u @ u <= b_ub, name="ineq")
-    m.setObjective(x @ P_x @ x + u @ P_u @ u + q_x @ x + q_u @ u + xd @ xd,
-                   sense=gp.GRB.MINIMIZE)
+    variables = (x, u)
+    if free_regions:
+        a = m.addMVar((na,), vtype=gp.GRB.BINARY, name="alpha")
+        variables += (a,)
+
+    eq_expr = sum(A @ var for A, var in zip(A_eqs, variables))
+    ub_expr = sum(A @ var for A, var in zip(A_ubs, variables))
+    quad_expr = sum(var @ P @ var for P, var in zip(Ps, variables))
+    lin_expr = sum(q @ var for q, var in zip(qs, variables))
+    m.addConstr(eq_expr == b_eq, name="eq")
+    m.addConstr(ub_expr <= b_ub, name="ineq")
+    m.setObjective(quad_expr + lin_expr, sense=gp.GRB.MINIMIZE)
 
     # print(time.time()-start_time)
     m.optimize()
     # print(time.time() - start_time)
     path = np.concatenate([x.x, u.x])
-    objective = m.getAttr("objval")
+    objective = m.getAttr("objval") + xd.T @ xd
     runtime = m.getAttr("runtime")
     return path[:nx], path[nx:], objective, runtime
 
-def smooth_path_lp(desired_path, q_mat, r_mat, s_mat, a_mat, b_mat, time_step, mode="infinity"): # noqa: D103
+def smooth_path_lp(desired_path, q_mat, r_mat, s_mat, a_mat, b_mat,
+                   free_regions, time_step, mode="infinity"): # noqa: D103
     ndim, nint, nstep = desired_path.shape
     nx, nu = ndim*nint*nstep, ndim*(nstep-1)
     x_initial = desired_path[:, :, 0]
@@ -318,7 +340,7 @@ def _results(xd_mat, q_mat, r_mat, s_mat, a_mat, b_mat, dt, suffix=""):
         name = k + suffix
         fig_name = v[1] + suffix
         print("--------------------{}--------------------".format(name))
-        result = v[0](xd_mat[:, :-1, :], q_mat, r_mat, s_mat, a_mat, b_mat, dt)
+        result = v[0](xd_mat[:, :-1, :], q_mat, r_mat, s_mat, a_mat, b_mat, [], dt)
         fig = _display(result, fig_name, xd_mat)
         if fig:
             figs.append(fig)
@@ -386,6 +408,8 @@ def optimization_time():
         short_args = list(_constrained_from_mat(_load(), *_calc_short(n, 1)))
         sliced_args[0] = sliced_args[0][:, :-1, :]
         short_args[0] = short_args[0][:, :-1, :]
+        sliced_args.insert(6, [])
+        short_args.insert(6, [])
         for i, _ in enumerate(cases):
             row = 2*i
             try:
@@ -424,19 +448,19 @@ def optimization_time():
     return [fig_time, fig_cost]
 
 if __name__ == "__main__":
-    PLOT = True
+    PLOT = False
     SAVE_FIGS = False
 
     n = 100
 
     fig_list = []
 
-    # fig_list.extend(test_simple())
+    fig_list.extend(test_simple())
     # fig_list.extend(test_full())
     # fig_list.extend(test_sliced(n))
     # fig_list.extend(test_short(n))
 
-    fig_list.extend(optimization_time())
+    # fig_list.extend(optimization_time())
 
     if PLOT and SAVE_FIGS:
         for i, fig in enumerate(fig_list):
