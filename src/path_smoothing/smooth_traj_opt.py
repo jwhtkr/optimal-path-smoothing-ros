@@ -304,20 +304,20 @@ def _load():
     return scipy.io.loadmat(f_name)
 
 def _plot_traj_and_states(x, u, xd_mat):
-    fig = plt.figure()
-    fig.set_tight_layout(True)
     x_mat = x.reshape(xd_mat.shape[0], xd_mat.shape[1]-1, xd_mat.shape[2],
                       order="F")
     u_mat = u.reshape(xd_mat.shape[0], xd_mat.shape[2]-1, order="F")
-    fig, axes_traj = _plot_trajectory(x_mat, xd_mat, fig)
+    fig = plt.figure()
+    fig.set_tight_layout(True)
+    fig, axes_traj = _plot_trajectory(x_mat, xd_mat, fig, fig.add_subplot(121))
     fig, axes_states = _plot_states(x_mat, u_mat, xd_mat, fig)
-    fig, axes_characteristics = _plot_characteristics(x_mat, xd_mat, fig)
     return fig, axes_traj
 
-def _plot_trajectory(x, xd_mat, fig=None):
-    if not fig:
-        fig = plt.figure()
-    axes = fig.add_subplot(1, 3, 1)
+def _plot_trajectory(x, xd_mat, fig=None, axes=None):
+    if not fig and not axes:
+        fig, axes = plt.subplots()
+    if not axes:
+        axes = fig.add_subplot(111)
     axes.plot(xd_mat[0, 0, :], xd_mat[1, 0, :], x[0, 0, :], x[1, 0, :])
     axes.axis("equal")
     return fig, axes
@@ -326,7 +326,7 @@ def _plot_states(x, u, xd_mat, fig=None):
     if not fig:
         fig = plt.figure()
     ndim, nint, nstep = x.shape
-    ncol = 2*ndim + 2
+    ncol = 2*ndim
     nrow = nint + 1
 
     for j in range(ndim):
