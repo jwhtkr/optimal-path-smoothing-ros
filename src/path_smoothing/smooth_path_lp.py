@@ -24,7 +24,8 @@ from path_smoothing.smooth_traj_opt import (_load, _constrained_from_mat,
                                             WORLD_SHORT)
 
 
-def smooth_path_qp(desired_path, q_mat, r_mat, s_mat, a_mat, b_mat, free_regions, time_step): # noqa: D103
+def smooth_path_qp(desired_path, q_mat, r_mat, s_mat, a_mat, b_mat,
+                   free_regions, time_step): # noqa: D103
     ndim, nint, nstep = desired_path.shape
     nx, nu = ndim*nint*nstep, ndim*(nstep-1)
     x_initial = desired_path[:, :, 0]
@@ -32,7 +33,7 @@ def smooth_path_qp(desired_path, q_mat, r_mat, s_mat, a_mat, b_mat, free_regions
     xd = desired_path.flatten(order="F")
     A_eq, b_eq = discrete_dynamic_equalities(ndim, nint, nstep, x_initial,
                                              time_step)
-    A_eq, b_eq = add_terminal_constraint(A_eq, b_eq, x_final, nstep)
+    # A_eq, b_eq = add_terminal_constraint(A_eq, b_eq, x_final, nstep)
     A_ub, b_ub = unpack_a_b(a_mat, b_mat, nstep)
     P_x, P_u, q_x, q_u = quadratic_cost(desired_path, q_mat, r_mat, s_mat,
                                         ndim, nint, nstep)
@@ -90,7 +91,7 @@ def smooth_path_lp(desired_path, q_mat, r_mat, s_mat, a_mat, b_mat,
     x_final = desired_path[:, :, -1]
     A_eq, b_eq = discrete_dynamic_equalities(ndim, nint, nstep, x_initial,
                                                time_step)
-    A_eq, b_eq = add_terminal_constraint(A_eq, b_eq, x_final, nstep)
+    # A_eq, b_eq = add_terminal_constraint(A_eq, b_eq, x_final, nstep)
     A_ub, b_ub = unpack_a_b(a_mat, b_mat, nstep)
     c, A_ub, b_ub, A_eq, b_eq, bounds = add_slack_variables(A_ub, b_ub, A_eq,
                                                             b_eq, desired_path,
@@ -422,6 +423,17 @@ def _results(xd_mat, q_mat, r_mat, s_mat, a_mat, b_mat, free_regions, dt, suffix
 
     return figs
 
+def _extract_times(figs):
+    times = []
+    for fig in figs:
+        title = fig.texts[0].get_text()
+        line1 = title.splitlines()[0]
+        time_text = line1.split(" - ")[-1]
+        time = float(time_text[5:])
+        times.append(time)
+
+    return times
+
 def test_simple():
     # xd_mat = np.array([[[0, 1, 2], [1, 1, 1], [0, 0, 0], [0, 0, 0], [0, 0, 0]],
     #                    [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]]])
@@ -497,20 +509,22 @@ def optimization_time():
         short_args = list(_constrained_from_mat(_load(), *_calc_short(n, 1)))
         sliced_args[0] = sliced_args[0][:, :-1, :]
         short_args[0] = short_args[0][:, :-1, :]
-        sliced_args.insert(6, [])
-        short_args.insert(6, [])
+        # sliced_args.insert(6, [])
+        # short_args.insert(6, [])
+        sliced_args.insert(6, _free_regions_from(CORRIDOR_WORLD_STRAIGHT_WITH_OBSTACLE))
+        short_args.insert(6, _free_regions_from(CORRIDOR_WORLD_STRAIGHT_WITH_OBSTACLE))
         for i, _ in enumerate(cases):
             row = 2*i
             try:
                 result_arr[row, j] = case_funcs[i](*sliced_args)
                 print("Solve Time: {}".format(result_arr[row, j, 3]))
-            except gp.GurobiError:
+            except (gp.GurobiError, AttributeError):
                 result_arr[row, j] = np.ma.masked
             print("Cumulative Time: {}".format(time.time() - start_time))
             try:
                 result_arr[row+1, j] = case_funcs[i](*short_args)
                 print("Solve Time: {}".format(result_arr[row+1, j, 3]))
-            except gp.GurobiError:
+            except (gp.GurobiError, AttributeError):
                 result_arr[row+1, j] = np.ma.masked
             print("Cumulative Time: {}".format(time.time() - start_time))
 
@@ -527,10 +541,12 @@ def optimization_time():
     fig_cost, axes_cost = plt.subplots()
     _, _, steps = _calc_slice(ns, xd_mat.shape[2])
     # axes_cost.plot(steps*0.01, result_arr[::2, :, 2].T*steps[:, np.newaxis]*0.01, "x-")
-    axes_cost.semilogx(steps*0.01, result_arr[::2, :, 2].T*steps[:, np.newaxis]*0.01, "x-")
+    # axes_cost.semilogx(steps*0.01, result_arr[::2, :, 2].T*steps[:, np.newaxis]*0.01, "x-")
+    axes_cost.semilogx(steps*0.01, result_arr[::2, :, 2].filled(0).T/ns[:, np.newaxis], "x-")
     axes_cost.invert_xaxis()
     axes_cost.set_xlabel("Discretization Resolution $\\Delta t$ (sec)")
-    axes_cost.set_ylabel("Normalized Objective Cost (Cost*$\\Delta t$)")
+    # axes_cost.set_ylabel("Normalized Objective Cost (Cost*$\\Delta t$)")
+    axes_cost.set_ylabel("Normalized Objective Cost (Cost/N)")
     axes_cost.legend([cases[0], cases[1], cases[2]])
     fig_cost.suptitle("Optimal Cost for Various Resolutions")
 
@@ -543,20 +559,51 @@ def mip_tests():
     n_cases = [1, 2, 3]
 
     fig_list = []
+    fig_places, axes_places = plt.subplots(len(place_cases), 1)
+    fig_places.suptitle("Obstacle Placement")
+    fig_places.set_tight_layout(True)
+    fig_n, axes_n = plt.subplots(len(n_cases), 1)
+    fig_n.suptitle("Number of Regions")
+    fig_n.set_tight_layout(True)
+
+    times_places = np.zeros((len(place_cases), len(l_cases), 3))
+    times_n = np.zeros((len(n_cases), len(l_cases), 3))
 
     for i, (place, (start, stop)) in enumerate(zip(place_cases, place_case_start_stop)):
         for j, l in enumerate(l_cases):
-            args = _mip_args(*_calc_slice(l, stop=stop, start=start), WORLD_SHORT, "{} (N={}, dt={})")
+            args = _mip_args(*_calc_slice(l, stop=stop, start=start),
+                             WORLD_SHORT_N[2], "{} (N={}, dt={})")
             args[-1] = args[-1].format(place, l, args[-2])
-            fig_list.extend(_results(*args))  # pylint: disable=no-value-for-parameter
+            figs = _results(*args)  # pylint: disable=no-value-for-parameter
+            times_places[i, j, :] = _extract_times(figs)
+            fig_list.extend(figs)
 
-    for i, n in enumerate(n_cases):
+        axes_places[i].semilogx(l_cases, times_places[i, :, :])
+        axes_places[i].set_title("Obst. placement: {}".format(place))
+        axes_places[i].set_ylabel("Time (sec)")
+        if i == len(place_cases) - 1:
+            axes_places[i].legend(["LP-$\\infty$", "LP-1", "QP"])
+            axes_places[i].set_xlabel("Traj. length (N)")
+
+    for i, nregions in enumerate(n_cases):
         for j, l in enumerate(l_cases):
-            args = _mip_args(*_calc_short(l, 1000//l), WORLD_SHORT_N[n], "{} regions (N={}, dt={})")
-            args[-1] = args[-1].format(n, l, args[-2])
-            fig_list.extend(_results(*args))  # pylint: disable=no-value-for-parameter
+            args = _mip_args(*_calc_short(l, 1000//l), WORLD_SHORT_N[nregions],
+                             "{} regions (N={}, dt={})")
+            args[-1] = args[-1].format(nregions, l, args[-2])
+            figs = _results(*args)  # pylint: disable=no-value-for-parameter
+            times_n[i, j, :] = _extract_times(figs)
+            fig_list.extend(figs)
 
-    return fig_list
+        axes_n[i].semilogx(l_cases, times_n[i, :, :])
+        axes_n[i].set_title("{} regions".format(nregions))
+        axes_n[i].set_ylabel("Time (sec)")
+        if i == len(n_cases) - 1:
+            axes_n[i].legend(["LP-$\\infty$", "LP-1", "QP"])
+            axes_n[i].set_xlabel("Traj. length (N)")
+
+    fig_list.extend([fig_places, fig_n])
+    # return fig_list
+    return [fig_places, fig_n]
 
 
 DISPLAY = False
@@ -596,3 +643,4 @@ if __name__ == "__main__":
             fig.savefig(file_name)
     if PLOT:
         plt.show()
+        pass
