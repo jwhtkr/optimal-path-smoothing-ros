@@ -1,39 +1,21 @@
 """Sparse matrix utility functions. Many related to/from scipy.sparse funcs."""
 
-from scipy.sparse import coo_matrix, issparse, bmat, eye, dok_matrix, vstack, csr_matrix  # pylint: disable=unused-import
+from scipy.sparse import coo_matrix, issparse, bmat, eye, dok_matrix, vstack, hstack, csr_matrix, csc_matrix  # pylint: disable=unused-import
 import numpy as np
 
 # used as exports
 assert bmat
 assert eye
-assert dok_matrix
+assert issparse
 assert vstack
+assert hstack
 assert csr_matrix
+assert csc_matrix
+assert dok_matrix
 
 
 def block_diag(mats, format='coo', dtype=None):  # pylint: disable=redefined-builtin
     """Much faster(O(n)) version of scipy.sparse.block_diag. Maintains API."""
-    # dtype = np.dtype(dtype)
-    # row = []
-    # col = []
-    # data = []
-    # r_idx = 0
-    # c_idx = 0
-    # for mat in mats:
-    #     if issparse(mat):
-    #         mat = mat.tocsr()
-    #     else:
-    #         mat = coo_matrix(mat).tocsr()
-    #     nrows, ncols = mat.shape
-    #     for r in range(nrows):
-    #         for c in range(ncols):
-    #             if mat[r, c] is not None:
-    #                 row.append(r + r_idx)
-    #                 col.append(c + c_idx)
-    #                 data.append(mat[r, c])
-    #     r_idx = r_idx + nrows
-    #     c_idx = c_idx + ncols
-    # return coo_matrix((data, (row, col)), dtype=dtype).asformat(format)
     row = []
     col = []
     data = []
