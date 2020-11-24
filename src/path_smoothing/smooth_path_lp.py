@@ -33,7 +33,7 @@ def smooth_path_qp(desired_path, q_mat, r_mat, s_mat, a_mat, b_mat,
     xd = desired_path.flatten(order="F")
     A_eq, b_eq = discrete_dynamic_equalities(ndim, nint, nstep, x_initial,
                                              time_step)
-    # A_eq, b_eq = add_terminal_constraint(A_eq, b_eq, x_final, nstep)
+    A_eq, b_eq = add_terminal_constraint(A_eq, b_eq, x_final, nstep)
     A_ub, b_ub = unpack_a_b(a_mat, b_mat, nstep)
     P_x, P_u, q_x, q_u = quadratic_cost(desired_path, q_mat, r_mat, s_mat,
                                         ndim, nint, nstep)
@@ -59,7 +59,9 @@ def smooth_path_qp(desired_path, q_mat, r_mat, s_mat, a_mat, b_mat,
     m = gp.Model()
     if not DISPLAY:
         m.setParam("outputflag", 0)
-    m.setParam("method", 1)
+    # m.setParam("method", 1)
+    m.setParam("FeasibilityTol", 1e-4)
+    m.setParam("OptimalityTol", 1e-4)
     x = m.addMVar((nx,), lb=-gp.GRB.INFINITY, name="x")
     u = m.addMVar((nu,), lb=-gp.GRB.INFINITY, name="u")
     variables = (x, u)
@@ -91,7 +93,7 @@ def smooth_path_lp(desired_path, q_mat, r_mat, s_mat, a_mat, b_mat,
     x_final = desired_path[:, :, -1]
     A_eq, b_eq = discrete_dynamic_equalities(ndim, nint, nstep, x_initial,
                                                time_step)
-    # A_eq, b_eq = add_terminal_constraint(A_eq, b_eq, x_final, nstep)
+    A_eq, b_eq = add_terminal_constraint(A_eq, b_eq, x_final, nstep)
     A_ub, b_ub = unpack_a_b(a_mat, b_mat, nstep)
     c, A_ub, b_ub, A_eq, b_eq, bounds = add_slack_variables(A_ub, b_ub, A_eq,
                                                             b_eq, desired_path,
@@ -123,6 +125,7 @@ def smooth_path_lp(desired_path, q_mat, r_mat, s_mat, a_mat, b_mat,
     if not DISPLAY:
         m.setParam("outputflag", 0)
     m.setParam("method", 2)
+    m.setParam("nodeMethod", 2)
     x = m.addMVar((nx,), lb=-gp.GRB.INFINITY, name="x")
     u = m.addMVar((nu,), lb=-gp.GRB.INFINITY, name="u")
     e = m.addMVar((ne,), name="epsilon")
@@ -606,7 +609,7 @@ def mip_tests():
     return [fig_places, fig_n]
 
 
-DISPLAY = False
+DISPLAY = True
 
 if __name__ == "__main__":
     PLOT = True
