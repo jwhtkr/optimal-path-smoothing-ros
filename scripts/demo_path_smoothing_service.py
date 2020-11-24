@@ -57,14 +57,15 @@ def demo_path_smoothing(input_file):
         result = smooth_path(xd_mat, q_mat, r_mat, s_mat, a_mat, b_mat, dt)
         smoothed_path = np.array(result.smoothed_path)
         # smoothed_path_snaps = np.array(result.smoothed_path_snaps)
-        xd_mat = input_data["xd_mat"]
-        x_mat = smoothed_path.reshape((xd_mat.shape[0], xd_mat.shape[1]-1,
-                                  xd_mat.shape[2]), order="F")
-        plt.plot(xd_mat[0, 0, :], xd_mat[1, 0, :],
-                 x_mat[0, 0, :], x_mat[1, 0, :])
-        plt.show()
     except rospy.ServiceException as ex:
         print("Service call failed: %s"%ex)
+
+    xd_mat = input_data["xd_mat"]
+    x_mat = smoothed_path.reshape((xd_mat.shape[0], xd_mat.shape[1]-1,
+                                xd_mat.shape[2]), order="F")
+    plt.plot(xd_mat[0, 0, :], xd_mat[1, 0, :],
+                x_mat[0, 0, :], x_mat[1, 0, :])
+    plt.show()
 
 def usage():
     """

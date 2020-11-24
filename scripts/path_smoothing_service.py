@@ -5,7 +5,8 @@ from __future__ import print_function
 
 from path_smoothing.srv import SmoothPath, SmoothPathResponse
 # pylint: disable=import-error, no-name-in-module
-from path_smoothing.smooth_traj_opt import smooth_constrained
+from path_smoothing.smooth_traj_opt import smooth_constrained, _free_regions_from, CORRIDOR_WORLD_STRAIGHT_WITH_OBSTACLE
+import path_smoothing.smooth_path_lp as smooth_path
 from tools.multi_array import multi_array_to_array
 # pylint: enable=import-error, no-name-in-module
 import rospy
@@ -47,8 +48,13 @@ def handle_path_smoothing(req):
     path : SmoothPathResponse
         Smoothed path.
     """
+    # smooth = smooth_constrained
+    smooth = lambda *args: smooth_path.smooth_path_qp(*args[:-1], _free_regions_from(CORRIDOR_WORLD_STRAIGHT_WITH_OBSTACLE), args[-1])
+    # smooth = lambda *args: smooth_path.smooth_path_lp(*args[:-1], _free_regions_from(CORRIDOR_WORLD_STRAIGHT_WITH_OBSTACLE), args[-1])
+
+
     (desired_path, q_mat, r_mat, s_mat, a_mat, b_mat, time_step) = parse_request(req)
-    smoothed = smooth_constrained(desired_path, q_mat, r_mat, s_mat, a_mat, b_mat, time_step)
+    smoothed = smooth(desired_path, q_mat, r_mat, s_mat, a_mat, b_mat, time_step)
     path = SmoothPathResponse(smoothed_path=smoothed[0], smoothed_path_snaps=smoothed[1])
     return path
 
