@@ -22,7 +22,7 @@ def parse_request(req):
 
     Returns
     -------
-    (desired_path, q_mat, r_mat, s_mat, a_mat, b_mat, time_step) : (numpy.array, ..., float)
+    (desired_path, q_mat, r_mat, s_mat, a_mat, b_mat, free_regions, time_step) : (numpy.ndarray, ..., list of tuples of numpy.ndarray, float)
         Parsed request data.
     """
     desired_path = multi_array_to_array(req.desired_path)
@@ -31,8 +31,11 @@ def parse_request(req):
     s_mat = multi_array_to_array(req.S)
     a_mat = multi_array_to_array(req.A)
     b_mat = multi_array_to_array(req.b)
+    regions_A = [multi_array_to_array(A) for A in req.regions_A]
+    regions_b = [multi_array_to_array(b) for b in req.regions_b]
+    free_regions = list(zip(regions_A, regions_b))
     time_step = req.time_step
-    return (desired_path, q_mat, r_mat, s_mat, a_mat, b_mat, time_step)
+    return (desired_path, q_mat, r_mat, s_mat, a_mat, b_mat, free_regions, time_step)
 
 def handle_path_smoothing(req):
     """
@@ -49,12 +52,13 @@ def handle_path_smoothing(req):
         Smoothed path.
     """
     # smooth = smooth_constrained
-    smooth = lambda *args: smooth_path.smooth_path_qp(*args[:-1], _free_regions_from(CORRIDOR_WORLD_STRAIGHT_WITH_OBSTACLE), args[-1])
+    # smooth = lambda *args: smooth_path.smooth_path_qp(*args[:-1], _free_regions_from(CORRIDOR_WORLD_STRAIGHT_WITH_OBSTACLE), args[-1])
     # smooth = lambda *args: smooth_path.smooth_path_lp(*args[:-1], _free_regions_from(CORRIDOR_WORLD_STRAIGHT_WITH_OBSTACLE), args[-1])
+    smooth = smooth_path.smooth_path_qp
 
 
-    (desired_path, q_mat, r_mat, s_mat, a_mat, b_mat, time_step) = parse_request(req)
-    smoothed = smooth(desired_path, q_mat, r_mat, s_mat, a_mat, b_mat, time_step)
+    (desired_path, q_mat, r_mat, s_mat, a_mat, b_mat, free_regions, time_step) = parse_request(req)
+    smoothed = smooth(desired_path, q_mat, r_mat, s_mat, a_mat, b_mat, free_regions, time_step)
     path = SmoothPathResponse(smoothed_path=smoothed[0], smoothed_path_snaps=smoothed[1])
     return path
 
