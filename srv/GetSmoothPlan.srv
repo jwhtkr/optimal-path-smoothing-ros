@@ -1,0 +1,13 @@
+# The pose that the path will start at
+geometry_msgs/Pose starting_pose
+# The pose that the path is trying to get to
+geometry_msgs/Pose target_pose
+
+---
+
+# The asked for path
+nav_msgs/Path path
+# The corresponding trajectory of the flat system
+std_msgs/Float32MultiArray trajectory
+# The corresponding inputs of the flat system
+std_msgs/Float32MultiArray inputs
