@@ -12,8 +12,10 @@ from nav_msgs.msg import Path
 from path_smoothing.srv import SmoothPath, GetSmoothPlan
 from rrt_server.srv import GetPlan
 
+# pylint: disable=import-error, no-name-in-module
 from tools.multi_array import array_to_multi_array, multi_array_to_array
 from path_smoothing.smooth_path_lp import smooth_path_qp as smooth
+# pylint: disable=import-error, no-name-in-module
 
 
 def get_original_path(start_pose, end_pose):
@@ -157,5 +159,6 @@ if __name__ == "__main__":
         print("Time: {}".format(time.time() - start))
         pub = rospy.Publisher("rrt_plan", Path, latch=True, queue_size=10)
         pub.publish(plan)
-    rospy.spin()
-    # rospy.sleep(0.5)
+        rospy.sleep(0.5)
+    else:
+        rospy.spin()

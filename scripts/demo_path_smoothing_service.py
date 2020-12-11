@@ -4,9 +4,6 @@
 from __future__ import print_function
 
 from path_smoothing.srv import SmoothPath
-# pylint: disable=import-error, no-name-in-module
-from tools.multi_array import array_to_multi_array
-# pylint: enable=import-error, no-name-in-module
 import rospy
 import sys
 import os.path
@@ -15,7 +12,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 from std_msgs.msg import Float32MultiArray
 
+# pylint: disable=import-error, no-name-in-module
 from path_smoothing.smooth_traj_opt import CORRIDOR_WORLD_STRAIGHT_WITH_OBSTACLE, _free_regions_from
+from tools.multi_array import array_to_multi_array
+# pylint: enable=import-error, no-name-in-module
+
 
 def unpack_input(input_data):
     """
