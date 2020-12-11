@@ -10,6 +10,8 @@ project(path_smoothing)
 find_package(catkin REQUIRED COMPONENTS
   rospy
   std_msgs
+  geometry_msgs
+  nav_msgs
   rostest
   message_generation
 )
@@ -58,6 +60,7 @@ catkin_python_setup()
 add_service_files(
   FILES
   SmoothPath.srv
+  GetSmoothPlan.srv
 )
 
 ## Generate actions in the 'action' folder
@@ -71,6 +74,8 @@ add_service_files(
 generate_messages(
   DEPENDENCIES
   std_msgs  # Or other packages containing msgs
+  geometry_msgs
+  nav_msgs
 )
 
 ################################################

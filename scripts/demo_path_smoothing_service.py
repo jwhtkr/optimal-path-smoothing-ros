@@ -4,15 +4,19 @@
 from __future__ import print_function
 
 from path_smoothing.srv import SmoothPath
-# pylint: disable=import-error, no-name-in-module
-from tools.multi_array import array_to_multi_array
-# pylint: enable=import-error, no-name-in-module
 import rospy
 import sys
 import os.path
 import scipy.io
 import numpy as np
 import matplotlib.pyplot as plt
+from std_msgs.msg import Float32MultiArray
+
+# pylint: disable=import-error, no-name-in-module
+from path_smoothing.smooth_traj_opt import CORRIDOR_WORLD_STRAIGHT_WITH_OBSTACLE, _free_regions_from
+from tools.multi_array import array_to_multi_array
+# pylint: enable=import-error, no-name-in-module
+
 
 def unpack_input(input_data):
     """
@@ -47,24 +51,31 @@ def demo_path_smoothing(input_file):
         Input file to read data from.
     """
     input_path = os.path.abspath(input_file)
-    print(input_path)
+    # print(input_path)
     input_data = scipy.io.loadmat(input_path)
     (xd_mat, q_mat, r_mat, s_mat, a_mat, b_mat, dt) = unpack_input(input_data)
+    free_regions = _free_regions_from(CORRIDOR_WORLD_STRAIGHT_WITH_OBSTACLE)
+    regions_A = [array_to_multi_array(A) for A, _ in free_regions]
+    regions_b = [array_to_multi_array(b) for _, b in free_regions]
+    # regions_A, regions_b = [], []
+    # a_mat = array_to_multi_array(np.empty((0, a_mat.layout.dim[1].size, a_mat.layout.dim[2].size, a_mat.layout.dim[3].size)))
+    # b_mat = array_to_multi_array(np.empty((0, b_mat.layout.dim[1].size)))
 
     rospy.wait_for_service('smooth_path')
     try:
         smooth_path = rospy.ServiceProxy('smooth_path', SmoothPath)
-        result = smooth_path(xd_mat, q_mat, r_mat, s_mat, a_mat, b_mat, dt)
+        result = smooth_path(xd_mat, q_mat, r_mat, s_mat, a_mat, b_mat, regions_A, regions_b, dt)
         smoothed_path = np.array(result.smoothed_path)
         # smoothed_path_snaps = np.array(result.smoothed_path_snaps)
-        xd_mat = input_data["xd_mat"]
-        x_mat = smoothed_path.reshape((xd_mat.shape[0], xd_mat.shape[1]-1,
-                                  xd_mat.shape[2]), order="F")
-        plt.plot(xd_mat[0, 0, :], xd_mat[1, 0, :],
-                 x_mat[0, 0, :], x_mat[1, 0, :])
-        plt.show()
     except rospy.ServiceException as ex:
         print("Service call failed: %s"%ex)
+
+    xd_mat = input_data["xd_mat"]
+    x_mat = smoothed_path.reshape((xd_mat.shape[0], xd_mat.shape[1]-1,
+                                xd_mat.shape[2]), order="F")
+    plt.plot(xd_mat[0, 0, :], xd_mat[1, 0, :],
+                x_mat[0, 0, :], x_mat[1, 0, :])
+    plt.show()
 
 def usage():
     """

@@ -26,6 +26,7 @@ from path_smoothing.smooth_traj_opt import (_load, _constrained_from_mat,
 
 def smooth_path_qp(desired_path, q_mat, r_mat, s_mat, a_mat, b_mat,
                    free_regions, time_step): # noqa: D103
+    start_time = time.time()
     ndim, nint, nstep = desired_path.shape
     nx, nu = ndim*nint*nstep, ndim*(nstep-1)
     x_initial = desired_path[:, :, 0]
@@ -33,7 +34,7 @@ def smooth_path_qp(desired_path, q_mat, r_mat, s_mat, a_mat, b_mat,
     xd = desired_path.flatten(order="F")
     A_eq, b_eq = discrete_dynamic_equalities(ndim, nint, nstep, x_initial,
                                              time_step)
-    # A_eq, b_eq = add_terminal_constraint(A_eq, b_eq, x_final, nstep)
+    A_eq, b_eq = add_terminal_constraint(A_eq, b_eq, x_final, nstep)
     A_ub, b_ub = unpack_a_b(a_mat, b_mat, nstep)
     P_x, P_u, q_x, q_u = quadratic_cost(desired_path, q_mat, r_mat, s_mat,
                                         ndim, nint, nstep)
@@ -57,9 +58,11 @@ def smooth_path_qp(desired_path, q_mat, r_mat, s_mat, a_mat, b_mat,
         A_ubs += (A_ub_a,)
 
     m = gp.Model()
-    if not DISPLAY:
+    if not DISPLAY_SOLVER_OUTPUT:
         m.setParam("outputflag", 0)
-    m.setParam("method", 1)
+    # m.setParam("method", 1)
+    m.setParam("FeasibilityTol", 1e-4)
+    m.setParam("OptimalityTol", 1e-4)
     x = m.addMVar((nx,), lb=-gp.GRB.INFINITY, name="x")
     u = m.addMVar((nu,), lb=-gp.GRB.INFINITY, name="u")
     variables = (x, u)
@@ -75,6 +78,7 @@ def smooth_path_qp(desired_path, q_mat, r_mat, s_mat, a_mat, b_mat,
     m.addConstr(ub_expr <= b_ub, name="ineq")
     m.setObjective(quad_expr + lin_expr, sense=gp.GRB.MINIMIZE)
 
+    print("Setup Time: {:.3f}".format(time.time() - start_time))
     # print(time.time()-start_time)
     m.optimize()
     # print(time.time() - start_time)
@@ -91,7 +95,7 @@ def smooth_path_lp(desired_path, q_mat, r_mat, s_mat, a_mat, b_mat,
     x_final = desired_path[:, :, -1]
     A_eq, b_eq = discrete_dynamic_equalities(ndim, nint, nstep, x_initial,
                                                time_step)
-    # A_eq, b_eq = add_terminal_constraint(A_eq, b_eq, x_final, nstep)
+    A_eq, b_eq = add_terminal_constraint(A_eq, b_eq, x_final, nstep)
     A_ub, b_ub = unpack_a_b(a_mat, b_mat, nstep)
     c, A_ub, b_ub, A_eq, b_eq, bounds = add_slack_variables(A_ub, b_ub, A_eq,
                                                             b_eq, desired_path,
@@ -120,9 +124,10 @@ def smooth_path_lp(desired_path, q_mat, r_mat, s_mat, a_mat, b_mat,
 
     ############ Gurobi ##############
     m = gp.Model()
-    if not DISPLAY:
+    if not DISPLAY_SOLVER_OUTPUT:
         m.setParam("outputflag", 0)
     m.setParam("method", 2)
+    m.setParam("nodeMethod", 2)
     x = m.addMVar((nx,), lb=-gp.GRB.INFINITY, name="x")
     u = m.addMVar((nu,), lb=-gp.GRB.INFINITY, name="u")
     e = m.addMVar((ne,), name="epsilon")
@@ -394,19 +399,21 @@ def _mip_args(start, stop, step, world, suffix):
     return args
 
 def _display(results, name, xd_mat):
-    print("Time: {:.3f}".format(results[3]))
+    print("Solve Time: {:.3f}".format(results[3]))
     if PLOT:
         fig, axes = _plot_traj_and_states(results[0], results[1], xd_mat)
         fig.suptitle("{} - Time: {:.3f}\nObj. Value: {:.3f}".format(name, results[3], results[2]))
         return fig, axes
+    return None, None
 
 def _results(xd_mat, q_mat, r_mat, s_mat, a_mat, b_mat, free_regions, dt, suffix=""):
     if suffix:
         suffix = "-" + suffix
 
-    tests = {"LP-inf": (smooth_path_lp, "LP-$\\infty$"),
-             "LP-one": (lambda *args: smooth_path_lp(*args, "one"), "LP-1"),
-             "QP": (smooth_path_qp, "QP")}
+    # tests = {"LP-inf": (smooth_path_lp, "LP-$\\infty$"),
+    #          "LP-one": (lambda *args: smooth_path_lp(*args, "one"), "LP-1"),
+    #          "QP": (smooth_path_qp, "QP")}
+    tests = {"QP": (smooth_path_qp, "QP")}
 
     figs = []
 
@@ -606,24 +613,26 @@ def mip_tests():
     return [fig_places, fig_n]
 
 
-DISPLAY = False
+DISPLAY_SOLVER_OUTPUT = False
 
 if __name__ == "__main__":
     PLOT = True
     SAVE_FIGS = False
 
-    n = 100
+    n = 50
 
     fig_list = []
 
+    # start_time = time.time()
     # fig_list.extend(test_simple())
+    # print("Time: {:.3f}".format(time.time() - start_time))
     # fig_list.extend(test_full())
     # fig_list.extend(test_sliced(n))
-    # fig_list.extend(test_short(n))
+    fig_list.extend(test_short(n))
 
     # fig_list.extend(optimization_time())
 
-    fig_list.extend(mip_tests())
+    # fig_list.extend(mip_tests())
 
     if PLOT and SAVE_FIGS:
         for i, fig in enumerate(fig_list):

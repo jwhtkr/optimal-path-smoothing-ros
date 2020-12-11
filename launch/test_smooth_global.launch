@@ -1,0 +1,34 @@
+<?xml version="1.0"?>
+<launch>
+  <arg name="world_file"           default="$(find occupancy_grid)/config/maze_world.yaml" />
+  <arg name="occupancy_grid_topic" default="occupancy_grid" />
+  <arg name="get_plan_topic"       default="rrt_server" />
+  <arg name="tf_frame"             default="map" />
+
+  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find rrt_server)/rviz/demo.rviz"/>
+
+  <include file="$(find occupancy_grid)/launch/occupancy_grid.launch" >
+    <arg name="loop_rate"     value="1" />
+    <arg name="resolution"    value="0.1" />
+    <arg name="world_file"    value="$(arg world_file)" />
+    <arg name="service_topic" value="get_occupancy_grid" />
+    <arg name="message_topic" value="$(arg occupancy_grid_topic)" />
+    <arg name="tf_frame"      value="$(arg tf_frame)" />
+    <arg name="start_rviz"    value="false" />
+  </include>
+
+  <include file="$(find rrt_server)/launch/rrt_server.launch" >
+    <arg name="occupancy_grid_topic"    value="$(arg occupancy_grid_topic)" />
+    <arg name="get_plan_topic"          value="$(arg get_plan_topic)" />
+    <arg name="tf_frame"                value="$(arg tf_frame)" />
+    <arg name="max_edge_length"         value="3" />
+    <arg name="edge_resolution"         value="0.1" />
+    <arg name="max_search_radius"       value="3" />
+    <arg name="max_neighbors_to_search" value="50" />
+    <arg name="check_target_ratio"      value="100" />
+    <arg name="target_radius"           value="0" />
+  </include>
+
+  <node pkg="path_smoothing" type="path_smoothing_service.py" name="path_smoothing_service" />
+  <!-- <node pkg="path_smoothing" type="smooth_global_node.py" name="smooth_global_node" /> -->
+</launch>

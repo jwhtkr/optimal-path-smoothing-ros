@@ -39,6 +39,7 @@ def array_to_multi_array(array):
     Float32MultiArray
         ROS multi array.
     """
+    array = np.asarray(array)   
     return Float32MultiArray(
         data=array.flatten(),
         layout=MultiArrayLayout(
