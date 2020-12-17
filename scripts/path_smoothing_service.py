@@ -58,8 +58,11 @@ def handle_path_smoothing(req):
 
 
     (desired_path, q_mat, r_mat, s_mat, a_mat, b_mat, free_regions, time_step) = parse_request(req)
-    smoothed = smooth(desired_path, q_mat, r_mat, s_mat, a_mat, b_mat, free_regions, time_step)
-    path = SmoothPathResponse(smoothed_path=smoothed[0], smoothed_path_snaps=smoothed[1])
+    try:
+        smoothed = smooth(desired_path, q_mat, r_mat, s_mat, a_mat, b_mat, free_regions, time_step)
+        path = SmoothPathResponse(smoothed_path=smoothed[0], smoothed_path_snaps=smoothed[1])
+    except smooth_path.gp.GurobiError as ex:
+        raise rospy.ServiceException(ex)
     return path
 
 def path_smoothing_server():

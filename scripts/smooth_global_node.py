@@ -51,6 +51,7 @@ def get_smooth_path(start_pose, end_pose):
                              free_regions[0], free_regions[1], dt)
     except rospy.ServiceException as ex:
         print("Service call failed: {}".format(ex))
+        raise
     return (np.array(result.smoothed_path).reshape((ndim, nint, nstep), order="F"),
             np.array(result.smoothed_path_snaps).reshape((ndim, nstep-1), order="F"))
 
@@ -62,7 +63,7 @@ def _create_qrs(ndim, nint):
     return array_to_multi_array(q_mat), array_to_multi_array(r_mat), array_to_multi_array(s_mat)
 
 def get_smooth_plan_cb(req):
-    start, end = req.start, req.end
+    start, end = req.starting_pose, req.target_pose
     traj, inputs = get_smooth_path(start, end)
     return traj_to_path(traj), array_to_multi_array(traj), array_to_multi_array(inputs)
 
