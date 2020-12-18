@@ -126,8 +126,8 @@ def path_to_traj(path, vel=1, nint=4, dt=0.1):
         alpha = (k*vel*dt - prev_dist)/delta_dist
         point = alpha*delta_dist*unit_dir + prev_point
         traj[:, 0, k] = point
-        if k != 0:
-            traj[:, 1, k] = vel*unit_dir
+        # if k != 0:
+        #     traj[:, 1, k] = vel*unit_dir
 
     traj[:, 0, -1] = point_arr[:, -1]
 
