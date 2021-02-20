@@ -65,6 +65,7 @@
   <!-- <exec_depend>python&#45;osqp</exec_depend> -->
   <exec_depend>python-numpy</exec_depend>
   <exec_depend>python-scipy</exec_depend>
+  <exec_depend>iris_ros</exec_depend>
 
 
   <!-- The export tag contains other, unspecified, tags -->

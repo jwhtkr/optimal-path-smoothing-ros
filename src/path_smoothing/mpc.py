@@ -1,6 +1,7 @@
 """Do MPC with the path smoothing setup."""
 
 import numpy as np
+import scipy.sparse as sparse
 import gurobipy as gp
 
 import path_smoothing.smooth_path_lp as smooth
@@ -37,7 +38,7 @@ class DiffFlatMpc(object):
     time_step : float
         The time step in between each point in the trajectory. This is the time
         step used for discretization as well.
-    cost : tuple of ((scipy.sparse or func, bool), (scipy.sparse or func, bool))
+    objective : tuple of ((scipy.sparse or func, bool), (scipy.sparse or func, bool))
         A tuple that defines the quadratic cost as ((P_x, bool), (P_u, bool)). A
         true boolean value indicates that the corresponding cost term is
         callable with the signature (t, x, u, xd) -> P where P is a positive
@@ -74,7 +75,7 @@ class DiffFlatMpc(object):
     time_step : float
         The time step in between each point in the trajectory. This is the time
         step used for discretization as well.
-    cost : tuple of ((scipy.sparse or func, bool), (scipy.sparse or func, bool))
+    objective : tuple of ((scipy.sparse or func, bool), (scipy.sparse or func, bool))
         A tuple that defines the quadratic cost as ((P_x, bool), (P_u, bool)). A
         true boolean value indicates that the corresponding cost term is
         callable with the signature (t, x, u, xd) -> P where P is a positive
@@ -106,6 +107,7 @@ class DiffFlatMpc(object):
         self._objective = None
         self.state = None
         self.control = None
+        self.param_vec = None
 
         self._init_model()
 
@@ -126,39 +128,45 @@ class DiffFlatMpc(object):
         self.model.setParam("outputFlag", 0)
 
     def _update_model(self, time, curr_state, curr_control, des_traj):
-        self._update_constraints(time, curr_state, curr_control, des_traj)
-        self._update_objective(time, curr_state, curr_control, des_traj)
+        if self._constraints:
+            self._update_constraints(time, curr_state, curr_control, des_traj)
+        else:
+            self._init_constraints(time, curr_state, curr_control, des_traj)
+        if self._objective:
+            self._update_objective(time, curr_state, curr_control, des_traj)
+        else:
+            self._init_objective(time, curr_state, curr_control, des_traj)
+        # self._update_constraints(time, curr_state, curr_control, des_traj)
+        # self._update_objective(time, curr_state, curr_control, des_traj)
 
-    def _update_constraints(self, time, curr_state, curr_control, des_traj):
+    def _init_constraints(self, time, curr_state, curr_control, des_traj):
         for i, constraint in enumerate(self.constraints):
-            a_mat, b_vec = constraint[0], constraint[1]
-            if a_mat[1]:
-                a_mat = a_mat[0](time, curr_state, curr_control, des_traj)
-            else:
-                a_mat = a_mat[0]
-            if b_vec[1]:
-                b_vec = b_vec[0](time, curr_state, curr_control, des_traj)
-            else:
-                b_vec = b_vec[0]
-            a_mat_x = a_mat[:, :self.ndim*self.nint*self.nstep]
-            a_mat_u = a_mat[:, self.ndim*self.nint*self.nstep:]
-            if constraint[2] == "eq":
-                expr = a_mat_x @ self.state + a_mat_u @ self.control == b_vec
-            elif constraint[2] == "ineq":
-                expr = a_mat_x @ self.state + a_mat_u @ self.control <= b_vec
-            else:
-                raise ValueError(f"Constraint {i} was given sense "
-                                 "{constraint[2]}, which is  not one of "
-                                 "[\"eq\", \"ineq\"]")
-            if len(self._constraints) < len(self.constraints):
-                self._constraints.append(self.model.addConstr(expr, name=f"c_{i}"))
-            else:
-                self.model.remove(self._constraints[i])
-                self._constraints[i] = self.model.addConstr(expr, name=f"c_{i}")
-                # TODO: Update only the constraints that change
+            expr = self._constraint_expr(constraint, time, curr_state, curr_control, des_traj)
+            self._constraints.append(self.model.addConstr(expr, name=f"c_{i}"))
 
-    def _update_objective(self, time, curr_state, curr_control, des_traj):
-        # TODO: only update when/what is changed in the objective.
+    def _constraint_expr(self, constraint, time, curr_state, curr_control, des_traj):
+        a_mat, b_vec = constraint[0], constraint[1]
+        if a_mat[1]:
+            a_mat = a_mat[0](time, curr_state, curr_control, des_traj)
+        else:
+            a_mat = a_mat[0]
+        if b_vec[1]:
+            b_vec = b_vec[0](time, curr_state, curr_control, des_traj)
+        else:
+            b_vec = b_vec[0]
+        a_mat_x = a_mat[:, :self.ndim*self.nint*self.nstep]
+        a_mat_u = a_mat[:, self.ndim*self.nint*self.nstep:]
+        if constraint[2] == "eq":
+            expr = a_mat_x @ self.state + a_mat_u @ self.control == b_vec
+        elif constraint[2] == "ineq":
+            expr = a_mat_x @ self.state + a_mat_u @ self.control <= b_vec
+        else:
+            raise ValueError(f"Constraint {i} was given sense "
+                                "{constraint[2]}, which is  not one of "
+                                "[\"eq\", \"ineq\"]")
+        return expr
+
+    def _init_objective(self, time, curr_state, curr_control, des_traj):
         p_x, p_u = self.objective[0], self.objective[1]
         if p_x[1]:
             p_x = p_x[0](time, curr_state, curr_control, des_traj)
@@ -173,6 +181,19 @@ class DiffFlatMpc(object):
         quad_u = self.control @ p_u @ self.control
         lin_x = -2*(x_des @ p_x) @ self.state
         self._objective = self.model.setObjective(quad_x + quad_u + lin_x)
+
+    def _update_constraints(self, time, curr_state, curr_control, des_traj):
+        for i, constraint in enumerate(self.constraints):
+            if constraint[1]:
+                self.model.remove(self._constraints[i])
+                expr = self._constraint_expr(constraint, time, curr_state, curr_control, des_traj)
+                self._constraints[i] = self.model.addConstr(expr, name=f"c_{i}")
+            # TODO: Update the constraints that change instead of replace them
+
+    def _update_objective(self, time, curr_state, curr_control, des_traj):
+        # TODO: only update when/what is changed in the objective.
+        if self.objective[0][1] or self.objective[1][1]:
+            self._init_objective(time, curr_state, curr_control, des_traj)
 
     def step(self, time, curr_state, curr_control, des_traj):
         """Generate the next step of MPC. Return the horizon's trajectory."""
@@ -203,41 +224,86 @@ if __name__ == "__main__":
     xd_mat[:, 1, -50:] = np.array([0, 1]).reshape(-1, 1)
 
     ndim, nint, nstep = xd_mat.shape
+    nhorizon = 50
     q_mat = np.diag([1, 1, 0, 0, 10, 10, 10, 10])
     r_mat = np.diag([1, 1])
     s_mat = q_mat*10
-    a_mat = np.empty((0, ndim, nint, nstep))
-    b_mat = np.empty((0, nstep))
+    # a_mat = np.empty((0, ndim, nint, nstep))
+    a_mat = np.array([[1, 0], [0, -1], [lower_lim - upper_lim, upper_lim - lower_lim]])
+    a_mat = sparse.bmat([[a_mat, sparse.coo_matrix((a_mat.shape[0], ndim*(nint-1)))]])
+    a_mat_full = np.concatenate([a_mat.toarray(), np.zeros((a_mat.shape[0], ndim))], axis=1)
+    a_mat_full = a_mat_full.reshape((3, ndim, nint+1), order="F")
+    a_mat_full = np.concatenate([a_mat_full[:,:,:,np.newaxis] for _ in range(nstep)], axis=3)
+    a_mat = sparse.block_diag([a_mat for _ in range(nhorizon)])
+    a_mat = sparse.bmat([[a_mat, sparse.coo_matrix((a_mat.shape[0], ndim*(nhorizon-1)))]])
+    a_mat = a_mat.tocsc()
+    # b_mat = np.empty((0, nstep))
+    b_mat = np.array([upper_lim, -lower_lim, 0])
+    b_mat_full = np.concatenate([b_mat for _ in range(nstep)])
+    b_mat = np.concatenate([b_mat for _ in range(nhorizon)])
     dt = 0.2
 
-    nhorizon = 50
-    P_x, P_u, q_x, q_u = smooth.quadratic_cost(xd_mat[:, :, :nhorizon], q_mat,
-                                               r_mat, s_mat, ndim, nint,
-                                               nhorizon)
+    # P_x, P_u, q_x, q_u = smooth.quadratic_cost(xd_mat[:, :, :nhorizon], q_mat,
+    #                                            r_mat, s_mat, ndim, nint,
+    #                                            nhorizon)
+    def P_x(t, x, u, xd):
+        del t, x, u
+        ret_val, _, _, _ = smooth.quadratic_cost(xd, q_mat, r_mat, s_mat, ndim,
+                                                 nint, nhorizon)
+        return ret_val
 
-    mpc = DiffFlatMpc(ndim, nint, nhorizon, dt, ((P_x, False), (P_u, False)))
+    def P_u(t, x, u, xd):
+        del t, x, u
+        _, ret_val, _, _ = smooth.quadratic_cost(xd, q_mat, r_mat, s_mat, ndim,
+                                                 nint, nhorizon)
+        return ret_val
+
+    constraint = ((a_mat, False), (b_mat, False), "ineq")
+
+    mpc = DiffFlatMpc(ndim, nint, nhorizon, dt, ((P_x, True), (P_u, True)),
+                      constraints=[constraint])
+    opt = smooth.smooth_path_qp(xd_mat, q_mat, r_mat, s_mat,
+                                a_mat_full,
+                                b_mat_full.reshape((3, nstep), order="F"),
+                                (), dt)
 
     # fig, ax = plt.subplots()
     plt.plot(xd, yd)
 
-    curr_x = np.array([[0., 0., 0., 0.], [10., 0., 0., 0.]])
+    solve_times = []
+    curr_x = np.array([[0., 0., 0., 0.], [0., 0., 0., 0.]])
     curr_u = np.zeros((ndim,))
+    result_traj = [(curr_x, curr_u)]
     mpc_line = None
     for i in range(nstep-nhorizon):
         curr_xd = xd_mat[:, :, i:i+nhorizon]
         tic = time.time()
-        traj, ctrl = mpc.step(i*dt, curr_x, curr_u, curr_xd)
-        toc = time.time()-tic
-        print(f"Time: {toc:.3f}")
-        if not mpc_line:
-            mpc_line, = plt.plot(traj[0, 0, :], traj[1, 0, :])
-            pos_line, = plt.plot(curr_x[0, 0], curr_x[1, 0], 'x')
-        else:
-            mpc_line.set_xdata(traj[0, 0, :])
-            mpc_line.set_ydata(traj[1, 0, :])
-            pos_line.set_xdata(curr_x[0, 0])
-            pos_line.set_ydata(curr_x[1, 0])
+        traj, ctrl = mpc.step(i, curr_x, curr_u, curr_xd)
+        solve_times.append(time.time()-tic)
+        print(f"Time: {solve_times[-1]:.3f}")
+        # if not mpc_line:
+        #     mpc_line, = plt.plot(traj[0, 0, :], traj[1, 0, :])
+        #     pos_line, = plt.plot(curr_x[0, 0], curr_x[1, 0], 'x')
+        #     pass
+        # else:
+        #     mpc_line.set_xdata(traj[0, 0, :])
+        #     mpc_line.set_ydata(traj[1, 0, :])
+        #     pos_line.set_xdata(curr_x[0, 0])
+        #     pos_line.set_ydata(curr_x[1, 0])
+        #     pass
 
         curr_x = traj[:, :, 1]
         curr_u = ctrl[:, 0]
-        plt.pause(0.05)
+        result_traj.append((curr_x, curr_u))
+        # plt.pause(0.05)
+
+    x = np.array([tmp[0][0, 0] for tmp in result_traj])
+    y = np.array([tmp[0][1, 0] for tmp in result_traj])
+    plt.plot(x, y)
+    opt_traj = opt[0].reshape((ndim, nint, nstep), order="F")
+    x_opt, y_opt = opt_traj[0, 0, :], opt_traj[1, 0, :]
+    plt.plot(x_opt, y_opt)
+    print(f"Avg. Solve Time: {sum(solve_times)/len(solve_times):.3f}")
+    print(f"Max Solve Time: {max(solve_times):.3f}")
+    print(f"Min Solve Time: {min(solve_times):.3f}")
+    plt.show()
