@@ -56,7 +56,8 @@ def smooth_path_qp(desired_path, q_mat, r_mat, s_mat, a_mat, b_mat,
         A_eq_a, A_ub_a = A_eq[:, nx+nu:], A_ub[:, nx+nu:]
         A_eqs += (A_eq_a,)
         A_ubs += (A_ub_a,)
-
+    create_time = time.time()
+    print("Create Time: {:.3f}".format(create_time - start_time))
     m = gp.Model()
     if not DISPLAY_SOLVER_OUTPUT:
         m.setParam("outputflag", 0)
@@ -77,6 +78,8 @@ def smooth_path_qp(desired_path, q_mat, r_mat, s_mat, a_mat, b_mat,
     m.addConstr(eq_expr == b_eq, name="eq")
     m.addConstr(ub_expr <= b_ub, name="ineq")
     m.setObjective(quad_expr + lin_expr, sense=gp.GRB.MINIMIZE)
+    gurobi_time = time.time()
+    print ("Gurobi Time: {:.3f}".format(gurobi_time - create_time))
 
     print("Setup Time: {:.3f}".format(time.time() - start_time))
     # print(time.time()-start_time)
