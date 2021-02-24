@@ -1,0 +1,3 @@
+std_msgs/Float32MultiArray flat_state
+uint8 ndimensions
+uint8 nderivatives
