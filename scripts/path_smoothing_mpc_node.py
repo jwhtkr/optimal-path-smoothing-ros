@@ -14,7 +14,7 @@ def path_to_traj(path):
     times = [pose_stamped.header.stamp.to_sec() for pose_stamped in path.poses]
     poses = [pose_stamped.pose for pose_stamped in path.poses]
 
-class DiffFlatMPCNode(mpc.DiffFlatMpc):
+class DiffFlatMPCNode:
     """
     ROS node to expose the path smoothing MPC for use in ROS.
 
@@ -27,8 +27,8 @@ class DiffFlatMPCNode(mpc.DiffFlatMpc):
     """
     def __init__(self):  # noqa: D107
         rospy.init_node("diff_flat_mpc_node")
-        parameters = self.get_parameters()
-        super().__init__(*parameters)
+        parameters = get_mpc_parameters()
+        self.mpc = mpc.DiffFlatMpc(*parameters)
 
         rospy.Subscriber("global_path", Path,
                          callback=self.global_path_cb, queue_size=10)
@@ -53,7 +53,7 @@ class DiffFlatMPCNode(mpc.DiffFlatMpc):
         self.global_path = msg
         self.new_global_path = True
 
-    def iris_regions(self, msg):
+    def iris_regions_cb(self, msg):
         pass
 
     def tv_constrs_cb(self, msg):
@@ -67,13 +67,13 @@ class DiffFlatMPCNode(mpc.DiffFlatMpc):
     def run(self):
         if self.global_path:
             time = rospy.Time.now().to_sec()
-            self.curr_desired_path = self.get_desired_traj(time)
+            self.curr_desired_traj = self.get_desired_traj(time)
             if self.new_global_path:
-                self.get_iris_regions(self.global_path)
-                self.get_tv_constrs(self.global_path)
+                # self.get_iris_regions(self.global_path)
+                # self.get_tv_constrs(self.global_path)
                 self.new_global_path = False
             self.mpc_output = self.mpc.step(time, self.flat_state,
                                             self.curr_control,
                                             self.curr_desired_traj)
             self.curr_control = self.mpc_output[1][:,0]
-            self.mpc_traj_pub(self.mpc_to_traj(self.mpc_output))
+            self.mpc_traj_pub.publish(self.mpc_to_traj(self.mpc_output))

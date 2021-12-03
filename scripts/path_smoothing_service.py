@@ -3,41 +3,43 @@
 
 from __future__ import print_function
 
-from path_smoothing.srv import SmoothPath, SmoothPathResponse
-# pylint: disable=import-error, no-name-in-module
-from path_smoothing.smooth_traj_opt import smooth_constrained, _free_regions_from, CORRIDOR_WORLD_STRAIGHT_WITH_OBSTACLE
-import path_smoothing.smooth_path_lp as smooth_path
-from tools.multi_array import multi_array_to_array
-# pylint: enable=import-error, no-name-in-module
+import gurobipy as gp
+import numpy as np
 import rospy
 
-def parse_request(req):
-    """
-    Parse a given ROS request.
+from path_smoothing.srv import SmoothPath, SmoothPathResponse, SmoothTraj
+from path_smoothing.src.tools import ros_paths
+from path_smoothing.src.tools.multi_array import multi_array_to_array
 
-    Parameters
-    ----------
-    req : SmoothPath
-        Request to parse.
 
-    Returns
-    -------
-    (desired_path, q_mat, r_mat, s_mat, a_mat, b_mat, free_regions, time_step) : (numpy.ndarray, ..., list of tuples of numpy.ndarray, float)
-        Parsed request data.
-    """
-    desired_path = multi_array_to_array(req.desired_path)
-    q_mat = multi_array_to_array(req.Q)
-    r_mat = multi_array_to_array(req.R)
-    s_mat = multi_array_to_array(req.S)
-    a_mat = multi_array_to_array(req.A)
-    b_mat = multi_array_to_array(req.b)
-    regions_A = [multi_array_to_array(A) for A in req.regions_A]
-    regions_b = [multi_array_to_array(b) for b in req.regions_b]
-    free_regions = list(zip(regions_A, regions_b))
-    time_step = req.time_step
-    return (desired_path, q_mat, r_mat, s_mat, a_mat, b_mat, free_regions, time_step)
+# def parse_request(req):
+#     """
+#     Parse a given ROS request.
 
-def handle_path_smoothing(req):
+#     Parameters
+#     ----------
+#     req : SmoothTraj
+#         Request to parse.
+
+#     Returns
+#     -------
+#     (desired_path, q_mat, r_mat, s_mat, a_mat, b_mat, free_regions, time_step) : (numpy.ndarray, ..., list of tuples of numpy.ndarray, float)
+#         Parsed request data.
+#     """
+#     desired_path = multi_array_to_array(req.desired_path)
+#     q_mat = multi_array_to_array(req.Q)
+#     r_mat = multi_array_to_array(req.R)
+#     s_mat = multi_array_to_array(req.S)
+#     a_mat = multi_array_to_array(req.A)
+#     b_mat = multi_array_to_array(req.b)
+#     regions_A = [multi_array_to_array(A) for A in req.regions_A]
+#     regions_b = [multi_array_to_array(b) for b in req.regions_b]
+#     free_regions = list(zip(regions_A, regions_b))
+#     time_step = req.time_step
+#     return (desired_path, q_mat, r_mat, s_mat, a_mat, b_mat, free_regions, time_step)
+
+
+def handle_path_smoothing(req: SmoothPath._request_class, traj_smoother):
     """
     Handle a ROS path smoothing request.
 
@@ -51,25 +53,31 @@ def handle_path_smoothing(req):
     path : SmoothPathResponse
         Smoothed path.
     """
-    # smooth = smooth_constrained
-    # smooth = lambda *args: smooth_path.smooth_path_qp(*args[:-1], _free_regions_from(CORRIDOR_WORLD_STRAIGHT_WITH_OBSTACLE), args[-1])
-    # smooth = lambda *args: smooth_path.smooth_path_lp(*args[:-1], _free_regions_from(CORRIDOR_WORLD_STRAIGHT_WITH_OBSTACLE), args[-1])
-    smooth = smooth_path.smooth_path_qp
-
-
-    (desired_path, q_mat, r_mat, s_mat, a_mat, b_mat, free_regions, time_step) = parse_request(req)
+    desired_traj = ros_paths.path_to_traj(req.desired_path, 2, req.time_step)
+    n_dim, n_int, n_step = desired_traj.shape
+    q_mat, r_mat = np.eye(n_dim*n_int), np.eye(n_dim)
+    s_mat = q_mat
+    a_mat, b_mat = np.empty((0,n_dim,n_int,n_step)), np.empty((0,))
+    free_regions = None
     try:
-        smoothed = smooth(desired_path, q_mat, r_mat, s_mat, a_mat, b_mat, free_regions, time_step)
-        path = SmoothPathResponse(smoothed_path=smoothed[0], smoothed_path_snaps=smoothed[1])
-    except smooth_path.gp.GurobiError as ex:
+        smoothed = traj_smoother(
+            desired_traj, q_mat, r_mat, s_mat, a_mat, b_mat, free_regions, req.time_step
+        )
+    except gp.GurobiError as ex:
         raise rospy.ServiceException(ex)
-    return path
+    return SmoothPathResponse(smoothed_path=ros_paths.traj_to_path(smoothed))
+
 
 def path_smoothing_server():
     """ROS node providing smooth_path service."""
-    rospy.init_node('path_smoothing')
-    rospy.Service('smooth_path', SmoothPath, handle_path_smoothing)
+    rospy.init_node("path_smoothing")
+    rospy.wait_for_service("smooth_traj")
+    traj_smoother = rospy.ServiceProxy("smooth_traj", SmoothTraj)
+    rospy.Service(
+        "smooth_path", SmoothPath, lambda req: handle_path_smoothing(req, traj_smoother)
+    )
     rospy.spin()
+
 
 if __name__ == "__main__":
     path_smoothing_server()

@@ -1,2 +1,2 @@
-nav_msgs/Path   desired_path
+nav_msgs/Path   desired_traj
 float32         time_step

@@ -1,12 +1,4 @@
-std_msgs/Float32MultiArray desired_path
-std_msgs/Float32MultiArray Q
-std_msgs/Float32MultiArray R
-std_msgs/Float32MultiArray S
-std_msgs/Float32MultiArray A
-std_msgs/Float32MultiArray b
-std_msgs/Float32MultiArray[] regions_A
-std_msgs/Float32MultiArray[] regions_b
+nav_msgs/Path desired_path
 float32 time_step
 ---
-float32[] smoothed_path
-float32[] smoothed_path_snaps
+nav_msgs/Path smoothed_path

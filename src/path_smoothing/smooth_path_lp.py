@@ -413,10 +413,10 @@ def _results(xd_mat, q_mat, r_mat, s_mat, a_mat, b_mat, free_regions, dt, suffix
     if suffix:
         suffix = "-" + suffix
 
-    # tests = {"LP-inf": (smooth_path_lp, "LP-$\\infty$"),
-    #          "LP-one": (lambda *args: smooth_path_lp(*args, "one"), "LP-1"),
-    #          "QP": (smooth_path_qp, "QP")}
-    tests = {"QP": (smooth_path_qp, "QP")}
+    tests = {"LP-inf": (smooth_path_lp, "LP-$\\infty$"),
+             "LP-one": (lambda *args: smooth_path_lp(*args, "one"), "LP-1"),
+             "QP": (smooth_path_qp, "QP")}
+    # tests = {"QP": (smooth_path_qp, "QP")}
 
     figs = []
 
@@ -627,11 +627,11 @@ if __name__ == "__main__":
     fig_list = []
 
     # start_time = time.time()
-    # fig_list.extend(test_simple())
+    fig_list.extend(test_simple())
     # print("Time: {:.3f}".format(time.time() - start_time))
     # fig_list.extend(test_full())
     # fig_list.extend(test_sliced(n))
-    fig_list.extend(test_short(n))
+    # fig_list.extend(test_short(n))
 
     # fig_list.extend(optimization_time())
 

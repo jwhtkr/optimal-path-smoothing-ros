@@ -14,16 +14,18 @@ import optimal_control.constraints.binary_constraints as bin_constr
 # pylint: disable=unused-import
 import optimal_control.solvers.osqp_solver as osqp
 import optimal_control.solvers.gurobi_solver as gurobi
+
 # pylint: enable=unused-import
 
 
 def interpolate(arg1, arg1_prev, arg1_next, arg2_prev, arg2_next):
     """Interpolate arg2 based on arg1 (linearly)."""
-    return (arg1-arg1_prev)/(arg1_next-arg1_prev)*(arg2_next-arg2_prev)\
-        + arg2_prev
+    return (arg1 - arg1_prev) / (arg1_next - arg1_prev) * (
+        arg2_next - arg2_prev
+    ) + arg2_prev
 
 
-class SmoothPathLinear(fixed_time.FixedTime):
+class SmoothTrajLinear(fixed_time.FixedTime):
     """
     Represents a linear trajectory smoothing optimal control problem.
 
@@ -51,15 +53,24 @@ class SmoothPathLinear(fixed_time.FixedTime):
 
     """
 
-    def __init__(self, constraints, cost, solver, n_step, initial_state,
-                 t_final=0., time_step=0., **kwargs): # noqa: D107
+    def __init__(
+        self,
+        constraints,
+        cost,
+        solver,
+        n_step,
+        initial_state,
+        t_final=0.0,
+        time_step=0.0,
+        **kwargs
+    ):  # noqa: D107
         self.n_dim, self.n_smooth = initial_state.shape
         self.initial_state = initial_state.reshape(-1, 1, order="F")
         dynamics = self._integrator_dynamics()
 
-        super(SmoothPathLinear, self).__init__(dynamics, constraints, cost,
-                                               solver, n_step, t_final,
-                                               time_step, **kwargs)
+        super(SmoothTrajLinear, self).__init__(
+            dynamics, constraints, cost, solver, n_step, t_final, time_step, **kwargs
+        )
 
     def update(self, **kwargs):
         """
@@ -82,15 +93,17 @@ class SmoothPathLinear(fixed_time.FixedTime):
         self.direct_cost = self._aggregate_cost()
         self.direct_constraints = self._aggregate_constraints(dyn_constraint)
 
-        super(SmoothPathLinear, self).update(**kwargs)
+        super(SmoothTrajLinear, self).update(**kwargs)
 
     def solve(self, warm_start=None, **kwargs):
         """See base class."""
-        y = super(SmoothPathLinear, self).solve(warm_start, **kwargs)
+        y = super(SmoothTrajLinear, self).solve(warm_start, **kwargs)
         if y is None:
             raise ValueError("The optimization problem was not solved.")
-        return (y[:self.n_dim*self.n_smooth*self.n_step],
-                y[self.n_dim*self.n_smooth*self.n_step:])
+        return (
+            y[: self.n_dim * self.n_smooth * self.n_step],
+            y[self.n_dim * self.n_smooth * self.n_step :],
+        )
 
     def _integrator_dynamics(self):
         """
@@ -116,20 +129,20 @@ class SmoothPathLinear(fixed_time.FixedTime):
         """
         discrete_dyn = self.dynamics.discretize(self.time_step)
 
-        m_mat = discrete_dyn.n_state*self.n_step
+        m_mat = discrete_dyn.n_state * self.n_step
 
-        a_x = -sparse.eye(m=m_mat, n=discrete_dyn.n_state*self.n_step, format="dok")
-        a_u = sparse.dok_matrix((m_mat, discrete_dyn.n_ctrl*(self.n_step-1)))
+        a_x = -sparse.eye(m=m_mat, n=discrete_dyn.n_state * self.n_step, format="dok")
+        a_u = sparse.dok_matrix((m_mat, discrete_dyn.n_ctrl * (self.n_step - 1)))
         b_mat = np.zeros((m_mat,))
 
-        b_mat[:discrete_dyn.n_state] = -self.initial_state.flatten()
+        b_mat[: discrete_dyn.n_state] = -self.initial_state.flatten()
 
         for i in range(1, self.n_step):
             row_begin = i * discrete_dyn.n_state
             row_end = row_begin + discrete_dyn.n_state
-            x_col_begin = (i-1) * discrete_dyn.n_state
+            x_col_begin = (i - 1) * discrete_dyn.n_state
             x_col_end = x_col_begin + discrete_dyn.n_state
-            u_col_begin = (i-1) * discrete_dyn.n_ctrl
+            u_col_begin = (i - 1) * discrete_dyn.n_ctrl
             u_col_end = u_col_begin + discrete_dyn.n_ctrl
 
             a_x[row_begin:row_end, x_col_begin:x_col_end] = discrete_dyn.a_mat
@@ -160,25 +173,29 @@ class SmoothPathLinear(fixed_time.FixedTime):
 
         """
         n_state = self.n_dim * self.n_smooth
-        m_x = n_state*self.n_step
+        m_x = n_state * self.n_step
 
         q_sparse = sparse.coo_matrix(self.cost.inst_state_cost)
-        q_sub = sparse.block_diag([q_sparse for _ in range(self.n_step-1)])
-        q_list = [[q_sub, None],
-                  [None, sparse.coo_matrix((n_state, n_state))]]
+        q_sub = sparse.block_diag([q_sparse for _ in range(self.n_step - 1)])
+        q_list = [[q_sub, None], [None, sparse.coo_matrix((n_state, n_state))]]
         q_mat = sparse.bmat(q_list, format="csc")
 
-        r_mat = sparse.block_diag([self.cost.inst_ctrl_cost
-                               for _ in range(self.n_step-1)])
+        r_mat = sparse.block_diag(
+            [self.cost.inst_ctrl_cost for _ in range(self.n_step - 1)]
+        )
 
-        s_list = [[sparse.coo_matrix((m_x-n_state, m_x-n_state)), None],
-                  [None, self.cost.term_state_cost]]
+        s_list = [
+            [sparse.coo_matrix((m_x - n_state, m_x - n_state)), None],
+            [None, self.cost.term_state_cost],
+        ]
         s_mat = sparse.bmat(s_list, format="csc")
 
-        x_d = np.concatenate([self.cost.desired_state(i*self.time_step)
-                              for i in range(self.n_step)]).reshape(-1, 1)
-        u_d = np.concatenate([self.cost.desired_ctrl(i*self.time_step)
-                              for i in range(self.n_step-1)]).reshape(-1, 1)
+        x_d = np.concatenate(
+            [self.cost.desired_state(i * self.time_step) for i in range(self.n_step)]
+        ).reshape(-1, 1)
+        u_d = np.concatenate(
+            [self.cost.desired_ctrl(i * self.time_step) for i in range(self.n_step - 1)]
+        ).reshape(-1, 1)
 
         def desired_state(t):
             """Return the desired state."""
@@ -190,8 +207,9 @@ class SmoothPathLinear(fixed_time.FixedTime):
             del t
             return u_d
 
-        return quad_cost.ContinuousQuadraticCost(q_mat, r_mat, s_mat, desired_state,
-                                                 desired_ctrl)
+        return quad_cost.ContinuousQuadraticCost(
+            q_mat, r_mat, s_mat, desired_state, desired_ctrl
+        )
 
     def _aggregate_constraints(self, dyn_constraint):
         """
@@ -210,14 +228,15 @@ class SmoothPathLinear(fixed_time.FixedTime):
 
         """
         if self.constraints is None:
-            return lin_const.LinearConstraints([dyn_constraint.eq_mats],
-                                               [dyn_constraint.eq_val])
+            return lin_const.LinearConstraints(
+                [dyn_constraint.eq_mats], [dyn_constraint.eq_val]
+            )
         eq_const = [[], [], []]
 
         ineq_const = [[], [], []]
 
         for i in range(self.n_step):
-            t = self.time_step*i
+            t = self.time_step * i
 
             eq_mat = self.constraints.equality_mat_vec(t)
             ineq = self.constraints.inequality_mat_vec(t)
@@ -231,13 +250,17 @@ class SmoothPathLinear(fixed_time.FixedTime):
             ineq_const[2].append(ineq[2])
 
         n_ctrl = self.constraints.n_ctrl
-        eq_const = (sparse.block_diag(eq_const[0]),
-                    sparse.block_diag(eq_const[1]),
-                    np.concatenate(eq_const[2]))
+        eq_const = (
+            sparse.block_diag(eq_const[0]),
+            sparse.block_diag(eq_const[1]),
+            np.concatenate(eq_const[2]),
+        )
 
-        ineq_const = (sparse.block_diag(ineq_const[0]),
-                      sparse.block_diag(ineq_const[1]),
-                      np.concatenate(ineq_const[2]))
+        ineq_const = (
+            sparse.block_diag(ineq_const[0]),
+            sparse.block_diag(ineq_const[1]),
+            np.concatenate(ineq_const[2]),
+        )
 
         def eq_mats(t):
             """Return the matrices of the aggregate equality constraint."""
@@ -259,15 +282,15 @@ class SmoothPathLinear(fixed_time.FixedTime):
             del t
             return ineq_const[2]
 
-        return lin_const.LinearConstraints(eq_mat_list=[eq_mats,
-                                                        dyn_constraint.eq_mats],
-                                           eq_val_list=[eq_val,
-                                                        dyn_constraint.eq_val],
-                                           ineq_mat_list=[ineq_mats],
-                                           ineq_bound_list=[ineq_bound])
+        return lin_const.LinearConstraints(
+            eq_mat_list=[eq_mats, dyn_constraint.eq_mats],
+            eq_val_list=[eq_val, dyn_constraint.eq_val],
+            ineq_mat_list=[ineq_mats],
+            ineq_bound_list=[ineq_bound],
+        )
 
 
-class SmoothPathLinearObstaclesMip(SmoothPathLinear):
+class SmoothTrajLinearObstaclesMip(SmoothTrajLinear):
     """
     Represent smoothing a linear trajectory with obstacle avoidance as MIP.
 
@@ -285,11 +308,22 @@ class SmoothPathLinearObstaclesMip(SmoothPathLinear):
 
     imp_ineq_agg_constr = bin_constr.ImplicationInequalityAggregateConstraint
 
-    def __init__(self, constraints, obstacle_constraints, cost, solver, n_step,
-                 initial_state, t_final=0., time_step=0., **kwargs): # noqa: D107
+    def __init__(
+        self,
+        constraints,
+        obstacle_constraints,
+        cost,
+        solver,
+        n_step,
+        initial_state,
+        t_final=0.0,
+        time_step=0.0,
+        **kwargs
+    ):  # noqa: D107
         self.obst_constraints = self.imp_ineq_agg_constr(obstacle_constraints)
-        super().__init__(constraints, cost, solver, n_step, initial_state,
-                         t_final, time_step)
+        super().__init__(
+            constraints, cost, solver, n_step, initial_state, t_final, time_step
+        )
 
     def _aggregate_constraints(self, dyn_constraint):
         lin_agg_constraints = super()._aggregate_constraints(dyn_constraint)
@@ -298,7 +332,7 @@ class SmoothPathLinearObstaclesMip(SmoothPathLinear):
     def _aggregate_with_obstacles(self, non_binary_constrs):
         a_mats, b_mats, b_vecs, m_mats = [], [], [], []
         for i in range(self.n_step):
-            t = self.time_step*i
+            t = self.time_step * i
 
             a_mat_t, b_mat_t, b_vec_t, m_mat_t = self._obstacles_at(t)
             a_mats.append(a_mat_t)
@@ -320,23 +354,28 @@ class SmoothPathLinearObstaclesMip(SmoothPathLinear):
         sel_mat_agg = sparse.block_diag(sel_mats)
         ones_mat_agg = sparse.block_diag(ones_mats)
 
-        eq_mat_func = lambda t: (sparse.csr_matrix((self.n_step,
-                                                    self.n_step*self.n_dim*self.n_smooth)),
-                                 sparse.csr_matrix((self.n_step, (self.n_step-1)*self.n_dim)),
-                                 ones_mat_agg)
+        eq_mat_func = lambda t: (
+            sparse.csr_matrix((self.n_step, self.n_step * self.n_dim * self.n_smooth)),
+            sparse.csr_matrix((self.n_step, (self.n_step - 1) * self.n_dim)),
+            ones_mat_agg,
+        )
         eq_val_func = lambda t: np.ones((self.n_step, 1))
 
-        imp_agg_constr = self.imp_ineq_agg_constr(ineq_mats=lambda t: (a_mat_agg,
-                                                                       b_mat_agg),
-                                                  b_vec=lambda t: b_vec_agg,
-                                                  m_mat=lambda t: m_mat_agg,
-                                                  sel_mat=sel_mat_agg)
-        bin_sum_constr = bin_constr.BinaryLinearEqualityConstraint(eq_mat_func,
-                                                                   eq_val_func)
+        imp_agg_constr = self.imp_ineq_agg_constr(
+            ineq_mats=lambda t: (a_mat_agg, b_mat_agg),
+            b_vec=lambda t: b_vec_agg,
+            m_mat=lambda t: m_mat_agg,
+            sel_mat=sel_mat_agg,
+        )
+        bin_sum_constr = bin_constr.BinaryLinearEqualityConstraint(
+            eq_mat_func, eq_val_func
+        )
 
-        constraints = constrs.Constraints(eq_constraints=[bin_sum_constr],
-                                          ineq_constraints=[imp_agg_constr],
-                                          constraints=non_binary_constrs)
+        constraints = constrs.Constraints(
+            eq_constraints=[bin_sum_constr],
+            ineq_constraints=[imp_agg_constr],
+            constraints=non_binary_constrs,
+        )
         return constraints
 
     def _obstacles_at(self, t):
@@ -347,15 +386,17 @@ class SmoothPathLinearObstaclesMip(SmoothPathLinear):
         return a_mat, b_mat, b_vec, m_mat
 
 
-
 if __name__ == "__main__":
     import time as time_module
+
     # pylint: disable=invalid-name
-    pts = [(0., -1., 1.),
-           (10., 2., 2.),
-           (20., 1., 0.),
-           (30., -2., -1.),
-           (40., -1., 1.)]
+    pts = [
+        (0.0, -1.0, 1.0),
+        (10.0, 2.0, 2.0),
+        (20.0, 1.0, 0.0),
+        (30.0, -2.0, -1.0),
+        (40.0, -1.0, 1.0),
+    ]
 
     def path(t_in):
         """Return the path based on the pts in function scope."""
@@ -366,13 +407,13 @@ if __name__ == "__main__":
             t, x, y = pt
             if pt is pts[-1]:
                 return np.array([x, y, 0, 0, 0, 0, 0, 0]).reshape(-1, 1)
-            t_next, x_next, y_next = pts[i+1]
+            t_next, x_next, y_next = pts[i + 1]
 
             if t_in >= t and t_in < t_next:
                 x_interpolated = interpolate(t_in, t, t_next, x, x_next)
                 y_interpolated = interpolate(t_in, t, t_next, y, y_next)
-                x_vel = (x_next-x)/(t_next-t)
-                y_vel = (y_next-y)/(t_next-t)
+                x_vel = (x_next - x) / (t_next - t)
+                y_vel = (y_next - y) / (t_next - t)
                 vec = [x_interpolated, y_interpolated, x_vel, y_vel, 0, 0, 0, 0]
 
                 return np.array(vec).reshape(-1, 1)
@@ -385,11 +426,10 @@ if __name__ == "__main__":
 
     import matplotlib.pyplot as plt
 
-    Q_mat = np.diag([1., 1., 0., 0., 1., 1., 1., 1.])
-    R_mat = np.diag([10., 10.])
-    S_mat = np.diag([10., 10., 0., 0., 0., 0., 0., 0.])
-    cst = quad_cost.ContinuousQuadraticCost(Q_mat, R_mat, S_mat,
-                                            desired_state=path)
+    Q_mat = np.diag([1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0])
+    R_mat = np.diag([10.0, 10.0])
+    S_mat = np.diag([10.0, 10.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+    cst = quad_cost.ContinuousQuadraticCost(Q_mat, R_mat, S_mat, desired_state=path)
 
     # def term_eq_mats(t):
     #     """Return terminal constraint matrices."""
@@ -417,9 +457,9 @@ if __name__ == "__main__":
     inst_cnstrnts = []
     for it in range(10, len(time), 10):
         x_des = x_desired[:2, it].reshape(-1, 1)
-        inst_cnstrnts.append(lin_const.LinearTimeInstantConstraint(time[it],
-                                                                   eq_matrices,
-                                                                   x_des))
+        inst_cnstrnts.append(
+            lin_const.LinearTimeInstantConstraint(time[it], eq_matrices, x_des)
+        )
     cnstrnts = lin_const.LinearConstraints(eq_constraints=inst_cnstrnts)
     # cnstrnts = None
     # slvr = osqp.OSQP()
@@ -427,10 +467,9 @@ if __name__ == "__main__":
 
     x_0 = x_desired[:, 0].reshape(2, 4, order="F").copy()
     x_0[1, 0] = 0.5
-    x_0[:, 1:] = 0.
+    x_0[:, 1:] = 0.0
     t_start = time_module.time()
-    opt_ctrl = SmoothPathLinear(cnstrnts, cst, slvr, len(time), x_0,
-                                t_final=time[-1])
+    opt_ctrl = SmoothTrajLinear(cnstrnts, cst, slvr, len(time), x_0, t_final=time[-1])
 
     st, ctl = opt_ctrl.solve()
     print("Solve Time: {}".format(time_module.time() - t_start))
@@ -438,7 +477,16 @@ if __name__ == "__main__":
     ctl = ctl.reshape(2, -1, order="F")
 
     plt.plot(x_desired[0, :], x_desired[1, :], st[0, :], st[1, :])
-    labels1 = [r"$x$", r"$y$", r"$v_x$", r"$v_y$", r"$a_x$", r"$a_y$", r"$x^{(3)}$", r"$y^{(3)}$"]
+    labels1 = [
+        r"$x$",
+        r"$y$",
+        r"$v_x$",
+        r"$v_y$",
+        r"$a_x$",
+        r"$a_y$",
+        r"$x^{(3)}$",
+        r"$y^{(3)}$",
+    ]
     labels2 = [r"$u_x$", r"$u_y$"]
     fig, axs = plt.subplots(8, 1)
     for k, ax in enumerate(axs):

@@ -1,0 +1,12 @@
+std_msgs/Float32MultiArray desired_traj
+std_msgs/Float32MultiArray Q
+std_msgs/Float32MultiArray R
+std_msgs/Float32MultiArray S
+std_msgs/Float32MultiArray A
+std_msgs/Float32MultiArray b
+std_msgs/Float32MultiArray[] regions_A
+std_msgs/Float32MultiArray[] regions_b
+float32 time_step
+---
+float32[] smoothed_traj
+float32[] smoothed_traj_snaps
