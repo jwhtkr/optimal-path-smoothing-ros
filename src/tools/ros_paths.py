@@ -2,8 +2,10 @@
 
 import math
 
+from geometry_msgs.msg import PoseStamped, Point, Quaternion
 from nav_msgs.msg import Path
 import numpy as np
+import rospy
 
 
 def path_to_traj(path: Path, n_int: int, time_step: float):
@@ -46,8 +48,26 @@ def path_to_traj(path: Path, n_int: int, time_step: float):
     return traj_arr.T
 
 
-def traj_to_path(traj) -> Path:
-    raise NotImplementedError("This method is not yet implemented")
+def traj_to_path(traj, time_step: float, stamp) -> Path:
+    path = Path()
+    path.header.stamp = stamp
+    path.poses = []
+
+    n_dim, n_int, n_step = traj.shape
+    for i in range(n_step):
+        time_stamp = stamp + rospy.Duration.from_sec(time_step*i)
+        pose_stamped = PoseStamped()
+        pose_stamped.header.stamp = time_stamp
+        pose_stamped.pose.position = Point(x=traj[0,0,i], y=traj[1,0,i], z=0)
+        pose_stamped.pose.orientation = calc_quaternion(traj[:,:,i])
+        path.poses.append(pose_stamped)
+
+    return path
+
+
+def calc_quaternion(traj_point) -> Quaternion:
+    theta = math.atan2(traj_point[1,1].item(), traj_point[0,1].item())
+    return Quaternion(x=0, y=0, z=math.sin(theta/2), w= math.cos(theta/2))
 
 
 def interp(desired_times, known_times, known_points):
@@ -78,8 +98,6 @@ def calc_velocity(point, next_point, time_step):
 
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
-    import rospy
-    from geometry_msgs.msg import PoseStamped
 
     test_path = Path()
     test_path.header.stamp = rospy.Time()

@@ -18,7 +18,7 @@ from tools.multi_array import multi_array_to_array
 import rospy
 
 
-def parse_request(req):
+def parse_request(req: SmoothTraj._request_class):
     """
     Parse a given ROS request.
 
@@ -38,9 +38,12 @@ def parse_request(req):
     s_mat = multi_array_to_array(req.S)
     a_mat = multi_array_to_array(req.A)
     b_mat = multi_array_to_array(req.b)
-    regions_A = [multi_array_to_array(A) for A in req.regions_A]
-    regions_b = [multi_array_to_array(b) for b in req.regions_b]
-    free_regions = list(zip(regions_A, regions_b))
+    if req.regions_A and req.regions_b:
+        regions_A = [multi_array_to_array(A) for A in req.regions_A]
+        regions_b = [multi_array_to_array(b) for b in req.regions_b]
+        free_regions = list(zip(regions_A, regions_b))
+    else:
+        free_regions = None
     time_step = req.time_step
     return (desired_traj, q_mat, r_mat, s_mat, a_mat, b_mat, free_regions, time_step)
 
@@ -88,7 +91,7 @@ def handle_traj_smoothing(req):
 
 def path_smoothing_server():
     """ROS node providing smooth_traj service."""
-    rospy.init_node("path_smoothing")
+    rospy.init_node("traj_smoothing_server")
     rospy.Service("smooth_traj", SmoothTraj, handle_traj_smoothing)
     rospy.spin()
 

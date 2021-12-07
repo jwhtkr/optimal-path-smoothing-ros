@@ -59,6 +59,8 @@ def smooth_path_qp(desired_path, q_mat, r_mat, s_mat, a_mat, b_mat,
     create_time = time.time()
     print("Create Time: {:.3f}".format(create_time - start_time))
     m = gp.Model()
+    # from pdb import set_trace
+    # set_trace()
     if not DISPLAY_SOLVER_OUTPUT:
         m.setParam("outputflag", 0)
     # m.setParam("method", 1)

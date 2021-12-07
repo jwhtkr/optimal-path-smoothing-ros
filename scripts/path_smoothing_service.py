@@ -2,15 +2,15 @@
 """ROS node providing path smoothing service."""
 
 from __future__ import print_function
+import array
 
 import gurobipy as gp
 import numpy as np
 import rospy
 
 from path_smoothing.srv import SmoothPath, SmoothPathResponse, SmoothTraj
-from path_smoothing.src.tools import ros_paths
-from path_smoothing.src.tools.multi_array import multi_array_to_array
-
+from tools.ros_paths import path_to_traj, traj_to_path
+from tools.multi_array import array_to_multi_array
 
 # def parse_request(req):
 #     """
@@ -53,24 +53,39 @@ def handle_path_smoothing(req: SmoothPath._request_class, traj_smoother):
     path : SmoothPathResponse
         Smoothed path.
     """
-    desired_traj = ros_paths.path_to_traj(req.desired_path, 2, req.time_step)
+    desired_traj = path_to_traj(req.desired_path, 2, req.time_step)
     n_dim, n_int, n_step = desired_traj.shape
-    q_mat, r_mat = np.eye(n_dim*n_int), np.eye(n_dim)
+    q_mat = array_to_multi_array(np.eye(n_dim * n_int))
+    r_mat = array_to_multi_array(np.eye(n_dim))
     s_mat = q_mat
-    a_mat, b_mat = np.empty((0,n_dim,n_int,n_step)), np.empty((0,))
-    free_regions = None
+    a_mat = array_to_multi_array(np.empty((0, n_dim, n_int + 1, n_step)))
+    b_mat = array_to_multi_array(np.empty((0,)))
     try:
         smoothed = traj_smoother(
-            desired_traj, q_mat, r_mat, s_mat, a_mat, b_mat, free_regions, req.time_step
+            array_to_multi_array(desired_traj),
+            q_mat,
+            r_mat,
+            s_mat,
+            a_mat,
+            b_mat,
+            [],
+            [],
+            req.time_step,
         )
     except gp.GurobiError as ex:
         raise rospy.ServiceException(ex)
-    return SmoothPathResponse(smoothed_path=ros_paths.traj_to_path(smoothed))
+    return SmoothPathResponse(
+        smoothed_path=traj_to_path(
+            np.reshape(smoothed.smoothed_traj, desired_traj.shape, order="F"),
+            req.time_step,
+            req.desired_path.header.stamp,
+        )
+    )
 
 
 def path_smoothing_server():
     """ROS node providing smooth_path service."""
-    rospy.init_node("path_smoothing")
+    rospy.init_node("path_smoothing_server")
     rospy.wait_for_service("smooth_traj")
     traj_smoother = rospy.ServiceProxy("smooth_traj", SmoothTraj)
     rospy.Service(
