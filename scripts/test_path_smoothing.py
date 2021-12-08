@@ -1,4 +1,5 @@
 #! /usr/bin/env python
+"""Test the path smoothing service."""
 
 import time
 

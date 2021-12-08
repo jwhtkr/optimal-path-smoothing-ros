@@ -55,7 +55,7 @@ def handle_path_smoothing(req: SmoothPath._request_class, traj_smoother):
     """
     desired_traj = path_to_traj(req.desired_path, 2, req.time_step)
     n_dim, n_int, n_step = desired_traj.shape
-    q_mat = array_to_multi_array(np.eye(n_dim * n_int))
+    q_mat = array_to_multi_array(np.diag([10] * n_dim + [1] * (n_dim * (n_int - 1))))
     r_mat = array_to_multi_array(np.eye(n_dim))
     s_mat = q_mat
     a_mat = array_to_multi_array(np.empty((0, n_dim, n_int + 1, n_step)))
